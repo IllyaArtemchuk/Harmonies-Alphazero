@@ -68,7 +68,34 @@ def create_state_tensor(game_state):
     player_channel *= valid_positions_mask
     phase_channel *= valid_positions_mask
     
+    # Add channels for available piles (each pile as a separate channel)
+    pile_channels = []
+    for pile_idx, pile in enumerate(game_state.available_piles):
+        for tile_type in TILE_TYPES:
+            # Count occurrences of this tile type in the pile
+            count = pile.count(tile_type)
+            # Create a channel with the count value
+            pile_channel = torch.full((1, height, width), count / 3, dtype=torch.float)
+            pile_channel *= valid_positions_mask
+            pile_channels.append(pile_channel)
+    
+    # Add channels for tiles in hand
+    hand_channels = []
+    for tile_type in TILE_TYPES:
+        # Count occurrences of this tile type in the hand
+        count = game_state.tiles_in_hand.count(tile_type)
+        # Create a channel with the count value
+        hand_channel = torch.full((1, height, width), count / 3, dtype=torch.float)
+        hand_channel *= valid_positions_mask
+        hand_channels.append(hand_channel)
+    
     # Concatenate all channels
-    full_tensor = torch.cat([tensor, player_channel, phase_channel], dim=0)
+    channels_to_concat = [tensor, player_channel, phase_channel]
+    if pile_channels:
+        channels_to_concat.extend(pile_channels)
+    if hand_channels:
+        channels_to_concat.extend(hand_channels)
+    
+    full_tensor = torch.cat(channels_to_concat, dim=0)
     
     return full_tensor
