@@ -17,3 +17,7 @@ VALID_HEXES = {
     # r = 2 (Bottom row, 5 hexes)
     (-2, 2), (-1, 2), (0, 2), (1, 2), (2, 2)
 }
+
+sorted_coords = sorted(list(VALID_HEXES)) 
+
+coordinate_to_index_map = {coord: index for index, coord in enumerate(sorted_coords)}

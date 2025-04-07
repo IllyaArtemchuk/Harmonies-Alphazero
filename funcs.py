@@ -1,4 +1,5 @@
 from constants import *
+from config import *
 import torch
 
 def create_state_tensor(game_state):
@@ -99,3 +100,19 @@ def create_state_tensor(game_state):
     full_tensor = torch.cat(channels_to_concat, dim=0)
     
     return full_tensor
+
+
+def get_action_index(action):
+    """ Maps a game action (pile_idx or (tile_idx, coord)) to a flat index (0-73). """
+    # Example logic:
+    if isinstance(action, int): # Pile choice
+        return action # Assumes pile indices 0-4 match action indices 0-4
+    elif isinstance(action, tuple) and len(action) == 2: # Placement (tile_idx, coord)
+        tile_idx, coord = action
+        # Need a consistent mapping from coord (q,r) to a linear index 0-22
+        coord_map = coordinate_to_index_map # Precompute this mapping
+        coord_idx = coord_map[coord]
+        # Calculate flat index: 5 (piles) + tile_idx * 23 + coord_idx
+        return 5 + (tile_idx * NUM_HEXES) + coord_idx
+    else:
+        raise ValueError(f"Invalid action format: {action}")
