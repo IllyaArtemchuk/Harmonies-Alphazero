@@ -4,23 +4,6 @@ import numpy as np
 from constants import *
 from collections import deque # For BFS
 
-# --- Constants ---
-WATER, PLANT, WOOD, STONE, BUILDING, FIELD = TILE_TYPES
-
-INITIAL_BAG = {
-    WATER: 23, PLANT: 19, WOOD: 21, STONE: 23, FIELD: 19, BUILDING: 15
-}
-NUM_PILES = 5
-PILE_SIZE = 3
-EMPTY_HEX_END_THRESHOLD = 2
-
-# --- Hex Grid Definition (Axial Coordinates: q, r) ---
-# Rows: 5, 4, 5, 4, 5. Centered horizontally. Pointy-top axial.
-# Total = 23 hexes.
-AXIAL_DIRECTIONS = [
-    (1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)
-]
-
 # --- Verification ---
 expected_count = 23
 if len(VALID_HEXES) != expected_count:

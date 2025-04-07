@@ -18,6 +18,20 @@ VALID_HEXES = {
     (-2, 2), (-1, 2), (0, 2), (1, 2), (2, 2)
 }
 
+AXIAL_DIRECTIONS = [
+    (1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)
+]
+
+
+WATER, PLANT, WOOD, STONE, BUILDING, FIELD = TILE_TYPES
+
+INITIAL_BAG = {
+    WATER: 23, PLANT: 19, WOOD: 21, STONE: 23, FIELD: 19, BUILDING: 15
+}
+NUM_PILES = 5
+PILE_SIZE = 3
+EMPTY_HEX_END_THRESHOLD = 2
+
 sorted_coords = sorted(list(VALID_HEXES)) 
 
 coordinate_to_index_map = {coord: index for index, coord in enumerate(sorted_coords)}

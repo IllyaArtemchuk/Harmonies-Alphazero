@@ -121,9 +121,6 @@ class MCTS():
 
             lg.logger_mcts.info('Selected action %s with Q+U %.4f', simulationAction, maxQU)
 
-            # --- DO NOT call applyMove here ---
-            # newState = currentNode.state.applyMove(simulationAction) # REMOVED
-
             # Move to the next node based on the selected edge
             currentNode = simulationEdge.outNode
             breadcrumbs.append(simulationEdge) # Add the edge taken to the path
@@ -219,10 +216,8 @@ class MCTS():
 
 
     def get_root_edges(self):
-        """ Returns the dictionary of edges connected to the root node. """
         return self.root.edges
 
-# --- Standalone Function to use MCTS ---
 
 def get_best_action_and_pi(game_state, model_manager, config):
     """

@@ -5,52 +5,33 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import os
+from config import *
 from pathlib import Path # Optional, for cleaner path handling
 
-# Assume AlphaZeroModel and ResidualBlock classes are defined above this
-# from your_model_file import AlphaZeroModel, ResidualBlock 
-
-# Also assume you have defined or imported your loss functions
-# e.g., policy_loss_fn = nn.CrossEntropyLoss() # Or your custom softmax_cross_entropy_with_logits
-# e.g., value_loss_fn = nn.MSELoss()
-
 class ModelManager:
-    def __init__(self, model_config, training_config):
-        """
-        Initializes the ModelManager.
-
-        Args:
-            model_config (dict): Configuration for the AlphaZeroModel 
-                                  (e.g., input_channels, board_size, action_size).
-            training_config (dict): Configuration for training 
-                                   (e.g., learning_rate, weight_decay, device, loss_weights).
-        """
-        self.model_config = model_config
-        self.training_config = training_config
-
-        # Determine device (CPU or GPU)
-        self.device = torch.device(training_config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+    def __init__(self):
+        self.device = torch.device(DEVICE)
         print(f"Using device: {self.device}")
 
         # Instantiate the actual neural network model
         self.model = AlphaZeroModel(
-            input_channels=model_config['input_channels'],
-            board_size=model_config['board_size'],
-            action_size=model_config['action_size']
+            input_channels=INPUT_CHANNELS,
+            board_size=BOARD_SIZE,
+            action_size=ACTION_SIZE
         ).to(self.device) # Move model to the chosen device
 
         # Define the optimizer
-        self.learning_rate = training_config['learning_rate']
+        self.learning_rate = LEARNING_RATE
         self.optimizer = optim.Adam( # Or optim.SGD, etc.
             self.model.parameters(),
             lr=self.learning_rate,
-            weight_decay=training_config.get('weight_decay', 0) # Optional weight decay (L2 regularization)
+            weight_decay=REG_CONST
         )
 
         self.policy_loss_fn = nn.CrossEntropyLoss()
         self.value_loss_fn = nn.MSELoss()
-        self.value_loss_weight = training_config.get('value_loss_weight', 0.5)
-        self.policy_loss_weight = training_config.get('policy_loss_weight', 0.5)
+        self.value_loss_weight = VALUE_LOSS_WEIGHT
+        self.policy_loss_weight = POLICY_LOSS_WEIGHT
 
     def predict(self, state_tensor):
         """
@@ -122,8 +103,6 @@ class ModelManager:
         filepath = folder_path / filename
 
         state = {
-            'model_config': self.model_config,
-            'training_config': self.training_config,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             # Add other things if needed: epoch, best_loss, etc.
@@ -143,10 +122,6 @@ class ModelManager:
         try:
             # Load checkpoint onto the correct device
             checkpoint = torch.load(filepath, map_location=self.device)
-            
-            # Optional: Verify config compatibility if needed
-            # assert self.model_config == checkpoint['model_config'], "Model config mismatch!"
-            # assert self.training_config == checkpoint['training_config'], "Training config mismatch!"
 
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
