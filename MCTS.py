@@ -1,234 +1,327 @@
 import numpy as np
-from config import *
-from funcs import create_state_tensor, get_action_index
+from config import * # Assuming this imports MCTS_SIMS, CPUCT, EPSILON, ALPHA, ACTION_SIZE, NUM_HEXES etc.
+from funcs import create_state_tensor, get_action_index # Assuming get_action_index takes (action, config)
 import random
+import loggers as lg # Your logging setup
 
-import loggers as lg
+# Assuming your HarmoniesGameState class and other necessary imports are available
 
 class Node():
+    def __init__(self, state):
+        self.state = state
+        self.playerTurn = state.playerTurn # Whose turn it is IN THIS STATE
+        # Generate a unique ID for the state if it doesn't have one
+        # This ID is crucial for the self.tree dictionary lookup in MCTS
+        if not hasattr(state, 'id') or state.id is None:
+             # Simple hash example - replace with a robust unique ID generator if needed
+             self.id = hash(str(state)) # Example: Hash the string representation
+             state.id = self.id # Assign back to state if needed by MCTS tree lookup
+        else:
+             self.id = state.id
+             
+        self.edges = {} # Changed from list to dictionary {action: Edge}
 
-	def __init__(self, state):
-		self.state = state
-		self.playerTurn = state.playerTurn
-		self.id = state.id
-		self.edges = []
-
-	def isLeaf(self):
-		if len(self.edges) > 0:
-			return False
-		else:
-			return True
+    def isLeaf(self):
+        # A node is a leaf if it has no outgoing edges (hasn't been expanded yet)
+        return len(self.edges) == 0
 
 class Edge():
+    def __init__(self, inNode, outNode, prior, action):
+        # ID might be less critical now if we don't store edges separately
+        # self.id = str(inNode.id) + '|' + str(outNode.id) 
+        self.inNode = inNode
+        self.outNode = outNode
+        self.playerTurn = inNode.playerTurn # Player who took the action leading to outNode
+        self.action = action # The action taken (e.g., pile_idx or (tile_idx, coord))
 
-	def __init__(self, inNode, outNode, prior, action):
-		self.id = inNode.state.id + '|' + outNode.state.id
-		self.inNode = inNode
-		self.outNode = outNode
-		self.playerTurn = inNode.state.playerTurn
-		self.action = action
-
-		self.stats =  {
-					'N': 0,
-					'W': 0,
-					'Q': 0,
-					'P': prior,
-				}
-				
+        self.stats =  {
+                    'N': 0,  # Visit count
+                    'W': 0,  # Total action value (sum of values from simulations passing through)
+                    'Q': 0,  # Mean action value (W/N)
+                    'P': prior, # Prior probability from NN policy head
+                }
 
 class MCTS():
+    def __init__(self, root_node, cpuct):
+        """
+        Initializes the MCTS search tree.
 
-	def __init__(self, root, cpuct):
-		self.root = root
-		self.tree = {}
-		self.cpuct = cpuct
-		self.addNode(root)
-	
-	def __len__(self):
-		return len(self.tree)
+        Args:
+            root_node (Node): The node representing the starting state of the search.
+            cpuct (float): Exploration constant.
+        """
+        self.root = root_node
+        self.tree = {} # Stores all nodes encountered in this search {node.id: Node}
+        self.cpuct = cpuct
+        self.addNode(root_node) # Add root node to the tree dictionary
 
-	def moveToLeaf(self):
+    def __len__(self):
+        return len(self.tree)
 
-		lg.logger_mcts.info('------MOVING TO LEAF------')
+    def addNode(self, node):
+        # Add node to the tree dictionary using its unique ID
+        self.tree[node.id] = node
 
-		breadcrumbs = []
-		currentNode = self.root
+    def moveToLeaf(self):
+        """
+        Traverses the tree from the root node to a leaf node using the PUCT formula.
 
-		value = 0
+        Returns:
+            tuple: (leaf_node (Node), breadcrumbs (list[Edge]))
+                   leaf_node: The selected leaf node.
+                   breadcrumbs: List of edges followed to reach the leaf node.
+        """
+        lg.logger_mcts.info('------MOVING TO LEAF------')
+        breadcrumbs = []
+        currentNode = self.root
 
-		while not currentNode.isLeaf():
+        while not currentNode.isLeaf():
+            lg.logger_mcts.info('PLAYER TURN at node %s selection: %d', currentNode.id, currentNode.playerTurn)
+            maxQU = -float('inf')
+            simulationEdge = None
+            simulationAction = None
 
-			lg.logger_mcts.info('PLAYER TURN...%d', currentNode.state.playerTurn)
-		
-			maxQU = -99999
+            # Add Dirichlet noise at the root for exploration
+            if currentNode == self.root:
+                epsilon = EPSILON
+                nu = np.random.dirichlet([ALPHA] * len(currentNode.edges))
+            else:
+                epsilon = 0
+                nu = [0] * len(currentNode.edges) # Placeholder, only used if epsilon > 0
 
-			if currentNode == self.root:
-				# randomness to encourage exploration at the root node
-				epsilon = EPSILON
-				nu = np.random.dirichlet([ALPHA] * len(currentNode.edges))
-			else:
-				epsilon = 0
-				nu = [0] * len(currentNode.edges)
+            # Calculate total visits Ns for the current node's outgoing edges
+            Ns = 0
+            for edge in currentNode.edges.values(): # Iterate through Edge objects in dict
+                Ns += edge.stats['N']
 
-			Ns = 0 # Total visit count for the state, calculated by adding up the visit counts of the edges
-			for action, edge in currentNode.edges:
-				Ns = Ns + edge.stats['N']
+            # Select the edge with the highest PUCT score
+            # Use items() to get action and edge, enumerate for nu index
+            for idx, (action, edge) in enumerate(currentNode.edges.items()):
+                # PUCT calculation
+                U = self.cpuct * \
+                    ((1 - epsilon) * edge.stats['P'] + epsilon * nu[idx]) * \
+                    np.sqrt(Ns) / (1 + edge.stats['N'])
+                Q = edge.stats['Q']
 
-			for idx, (action, edge) in enumerate(currentNode.edges):
+                # --- Optional: Log PUCT details ---
+                # lg.logger_mcts.info(...) 
 
-				U = self.cpuct * \
-					((1-epsilon) * edge.stats['P'] + epsilon * nu[idx] )  * \
-					np.sqrt(Ns) / (1 + edge.stats['N'])
-					
-				Q = edge.stats['Q']
+                if Q + U > maxQU:
+                    maxQU = Q + U
+                    simulationAction = action # Store the action itself
+                    simulationEdge = edge   # Store the edge object
 
-				lg.logger_mcts.info('action: %d (%d)... N = %d, P = %f, nu = %f, adjP = %f, W = %f, Q = %f, U = %f, Q+U = %f'
-					, action, action % 7, edge.stats['N'], np.round(edge.stats['P'],6), np.round(nu[idx],6), ((1-epsilon) * edge.stats['P'] + epsilon * nu[idx] )
-					, np.round(edge.stats['W'],6), np.round(Q,6), np.round(U,6), np.round(Q+U,6))
-
-				if Q + U > maxQU:
-					maxQU = Q + U
-					simulationAction = action
-					simulationEdge = edge
-
-			lg.logger_mcts.info('action with highest Q + U...%d', simulationAction)
-
-			currentNode = simulationEdge.outNode
-			breadcrumbs.append(simulationEdge)
-
-
-		return currentNode, value, breadcrumbs
-
-
-
-	def backFill(self, leaf, value, breadcrumbs):
-		lg.logger_mcts.info('------DOING BACKFILL------')
-
-		currentPlayer = leaf.state.playerTurn
-
-		for edge in breadcrumbs:
-			playerTurn = edge.playerTurn
-			if playerTurn == currentPlayer:
-				direction = 1
-			else:
-				direction = -1
-
-			edge.stats['N'] = edge.stats['N'] + 1
-			edge.stats['W'] = edge.stats['W'] + value * direction
-			edge.stats['Q'] = edge.stats['W'] / edge.stats['N']
-
-			lg.logger_mcts.info('updating edge with value %f for player %d... N = %d, W = %f, Q = %f'
-				, value * direction
-				, playerTurn
-				, edge.stats['N']
-				, edge.stats['W']
-				, edge.stats['Q']
-				)
-
-			edge.outNode.state.render(lg.logger_mcts)
+            if simulationEdge is None:
+                 # This should not happen if a node is not a leaf (must have edges)
+                 # unless maybe all priors P were zero? Handle robustly.
+                 lg.logger_mcts.error("MCTS Selection failed: Node %s is not leaf but no edge selected.", currentNode.id)
+                 # Handle error: maybe break, maybe choose randomly? For now, let's raise.
+                 raise Exception(f"MCTS Selection Failure at Node {currentNode.id}")
 
 
-	def get_best_action_and_pi(self, game_state, model_manager):
-		"""
-		Runs MCTS simulation to determine the best move from the current state.
+            lg.logger_mcts.info('Selected action %s with Q+U %.4f', simulationAction, maxQU)
 
-		Args:
-			game_state: The current HarmoniesGameState object.
-			model_manager: Your ModelManager instance containing the NN and predict method.
-			config: Dictionary with hyperparameters (e.g., MCTS_SIMS, cpuct).
+            # --- DO NOT call applyMove here ---
+            # newState = currentNode.state.applyMove(simulationAction) # REMOVED
 
-		Returns:
-			tuple: (chosen_move, pi_target)
-				chosen_move: The action selected by MCTS (e.g., pile index or (tile_idx, coord)).
-				pi_target: The normalized visit count distribution (training target for policy head).
-						Should be a numpy array of size matching the action space (e.g., 74).
-		"""
-		# 1. Initialize MCTS Tree for this move decision
-		root_node = Node(game_state) # Assuming Node takes a game_state
+            # Move to the next node based on the selected edge
+            currentNode = simulationEdge.outNode
+            breadcrumbs.append(simulationEdge) # Add the edge taken to the path
+
+        lg.logger_mcts.info('Reached leaf node %s', currentNode.id)
+        # Return the leaf node found and the path taken
+        return currentNode, breadcrumbs
+
+    def expand_leaf(self, leaf_node, policy_p, config):
+        """
+        Expands a leaf node by creating child nodes and edges for all legal moves.
+        Initializes the prior probabilities 'P' of the new edges using the NN policy output.
+
+        Args:
+            leaf_node (Node): The leaf node to expand.
+            policy_p (np.ndarray): Policy vector output from the NN for the leaf node's state.
+                                   Should have size ACTION_SIZE.
+            config (dict): Configuration containing ACTION_SIZE, NUM_HEXES, 
+                           coordinate_to_index_map.
+        """
+        lg.logger_mcts.info('------EXPANDING LEAF NODE %s------', leaf_node.id)
+        # Get all legal actions from the leaf node's state
+        legal_moves = leaf_node.state.get_legal_moves()
+
+        if not legal_moves:
+            lg.logger_mcts.warning("Attempting to expand a node with no legal moves (likely terminal).")
+            return # Nothing to expand
+
+        for move in legal_moves:
+            # Get the prior probability for this specific move from the NN's policy output
+            action_index = get_action_index(move, config) # Map game move -> flat index
+            prior_p = policy_p[action_index]
+
+            # Create the next state by applying the move (MUST return a NEW state object)
+            next_state = leaf_node.state.apply_move(move)
+            # Ensure the new state has a unique ID
+            if not hasattr(next_state, 'id') or next_state.id is None:
+                 # Generate ID if missing (use same method as in Node.__init__)
+                 next_state.id = hash(str(next_state)) # Example ID generation
+            
+            # Check if the child node already exists in the tree (e.g., transposition)
+            if next_state.id in self.tree:
+                child_node = self.tree[next_state.id]
+                lg.logger_mcts.debug('Child node %s (state %s) already exists.', child_node.id, next_state.id)
+            else:
+                # Create a new node for the child state
+                child_node = Node(next_state)
+                self.addNode(child_node) # Add the new node to the tree dictionary
+                lg.logger_mcts.debug('Created new child node %s (state %s).', child_node.id, next_state.id)
+
+            # Create the edge connecting the leaf node to the child node
+            new_edge = Edge(leaf_node, child_node, prior_p, move)
+
+            # Add the edge to the leaf node's dictionary of outgoing edges
+            leaf_node.edges[move] = new_edge
+            lg.logger_mcts.debug('Added edge for action %s with prior P=%.4f', move, prior_p)
+
+    def backFill(self, leaf_node, value_v, breadcrumbs):
+        """
+        Backpropagates the evaluated value ('value_v') up the tree along the path ('breadcrumbs').
+
+        Args:
+            leaf_node (Node): The leaf node where the evaluation occurred.
+            value_v (float): The value (-1 to 1) obtained from NN evaluation or terminal state.
+            breadcrumbs (list[Edge]): The list of edges followed from the root to the leaf.
+        """
+        lg.logger_mcts.info('------DOING BACKFILL from leaf %s with value %.4f------', leaf_node.id, value_v)
+
+        # The value 'value_v' is from the perspective of the player whose turn it is at the leaf_node.
+        # We need to adjust the sign when updating edges belonging to the *other* player.
+        player_at_leaf = leaf_node.playerTurn
+
+        for edge in reversed(breadcrumbs): # Go backwards up the path
+            # Determine if the value needs to be flipped for this edge's perspective
+            # playerTurn on edge = player who *took the action* leading TO edge.outNode
+            if edge.playerTurn == player_at_leaf:
+                direction = 1.0 # Value is from the perspective of the player who made the move
+            else:
+                direction = -1.0 # Value is from the opponent's perspective
+
+            value_for_edge = value_v * direction
+
+            # Update edge statistics
+            edge.stats['N'] += 1
+            edge.stats['W'] += value_for_edge
+            edge.stats['Q'] = edge.stats['W'] / edge.stats['N']
+
+            lg.logger_mcts.debug('Updating edge for action %s (player %d): N=%d, W=%.4f, Q=%.4f (value_for_edge=%.4f)'
+                , edge.action, edge.playerTurn, edge.stats['N'], edge.stats['W'], edge.stats['Q'], value_for_edge)
+
+            # Optional: Render state for debugging if needed
+            # edge.inNode.state.render(lg.logger_mcts) # Render the parent node's state
 
 
-		# 2. Run MCTS Simulations
-		for _ in range(MCTS_SIMS):
-			# --- Execute one simulation ---
-			# a. Select leaf node using PUCT (handle moving NN predict call here)
-			leaf_node, value, breadcrumbs = self.moveToLeaf() # Modify moveToLeaf
+    def get_root_edges(self):
+        """ Returns the dictionary of edges connected to the root node. """
+        return self.root.edges
 
-			# b. Expand & Evaluate Leaf Node (if not terminal)
-			if not leaf_node.state.is_game_over(): # Check if terminal
-				# Prepare NN input (spatial + non-spatial)
-				state_tensor = create_state_tensor(leaf_node.state) # Plus non-spatial features if needed
-				# Predict policy and value
-				policy_p, value_v = model_manager.predict(state_tensor)
-				
-				# Expand the node: create children edges/nodes and set prior 'P' using policy_p
-				self.expand_leaf(leaf_node, policy_p) 
-			else:
-				# Game is over at the leaf, get the actual outcome
-				outcome = leaf_node.state.get_game_outcome() # Returns 1, -1, or 0
-				# Ensure outcome is from the perspective of the player whose turn it *was* at the leaf
-				# This might need adjustment based on how get_game_outcome works
-				value_v = outcome # Or adjust perspective if needed 
+# --- Standalone Function to use MCTS ---
 
-			# c. Backpropagate the value
-			self.backFill(value_v, breadcrumbs) # Pass value and path
+def get_best_action_and_pi(game_state, model_manager, config):
+    """
+    Runs MCTS simulation to determine the best move from the current state.
 
-		# 3. Get Action Probabilities (pi_target) from Root Visit Counts
-		# This depends on how you store edges/children at the root
-		root_edges = self.get_root_edges() # Need a way to get edges/children of the root
-		pi_target = np.zeros(ACTION_SIZE)
-		total_visits = 0
-		
-		edge_data_for_selection = [] # Store (action, visits, edge) for choosing move
+    Args:
+        game_state: The current HarmoniesGameState object.
+        model_manager: Your ModelManager instance containing the NN and predict method.
+        config: Dictionary with hyperparameters (MCTS_SIMS, cpuct, ACTION_SIZE, etc.).
 
-		# Iterate through edges/children connected to the root
-		# The structure depends on your MCTS implementation (dict or list)
-		for action, edge in root_edges.items(): # Assuming dict: {action: Edge}
-			action_index = get_action_index(action) # You need a function to map game action -> policy vector index
-			pi_target[action_index] = edge.stats['N']
-			total_visits += edge.stats['N']
-			edge_data_for_selection.append((action, edge.stats['N']))
-			
-		if total_visits > 0:
-			pi_target = pi_target / total_visits
-		else:
-			# Handle case where no simulations were run or root has no children (shouldn't happen?)
-			# Maybe assign uniform probability to legal moves? Or raise error?
-			print("Warning: MCTS root had zero total visits.")
-			# Fallback: uniform probability over legal moves? Requires care.
-			legal_moves = game_state.get_legal_moves()
-			num_legal = len(legal_moves)
-			if num_legal > 0:
-				uniform_prob = 1.0 / num_legal
-				for move in legal_moves:
-					action_index = get_action_index(move)
-					pi_target[action_index] = uniform_prob
-			
+    Returns:
+        tuple: (chosen_move, pi_target)
+            chosen_move: The action selected by MCTS.
+            pi_target: The normalized visit count distribution (np.ndarray).
+    """
+    # 1. Initialize MCTS Tree for this specific move decision
+    root_node = Node(game_state)
+    mcts = MCTS(root_node, config['cpuct']) # Use cpuct from config
 
-		# 4. Choose the Move to Play
-		# Usually select the move with the highest visit count (greedy)
-		# Optional: Add temperature parameter for exploration during early self-play
-		best_action = None
-		max_visits = -1
-		for action, visits in edge_data_for_selection:
-			if visits > max_visits:
-				max_visits = visits
-				best_action = action
-				
-		if best_action is None:
-			# Handle edge case: No valid moves or MCTS failed? Choose randomly?
-			print("Warning: MCTS could not select a best action. Choosing random legal move.")
-			legal_moves = game_state.get_legal_moves()
-			if legal_moves:
-				best_action = random.choice(legal_moves)
-			else:
-				# This means the game should likely have ended.
-				raise Exception("MCTS failed to find a move and no legal moves exist.")
+    # 2. Run MCTS Simulations
+    for _ in range(config['MCTS_SIMS']): # Use MCTS_SIMS from config
+        # --- Execute one simulation ---
+        # a. Select leaf node using PUCT
+        leaf_node, breadcrumbs = mcts.moveToLeaf()
 
+        # b. Expand & Evaluate Leaf Node (if not terminal)
+        if not leaf_node.state.is_game_over():
+            # Prepare NN input (ensure format matches NN's forward method)
+            # This might involve calling create_state_tensor and other feature prep funcs
+            state_tensor = create_state_tensor(leaf_node.state) # Adjust if needed
 
-		return best_action, pi_target
+            # Predict policy and value using the NN
+            policy_p, value_v = model_manager.predict(state_tensor)
 
-	def addNode(self, node):
-		self.tree[node.id] = node
+            # Expand the node using the NN's policy output
+            mcts.expand_leaf(leaf_node, policy_p, config) # Pass config
+        else:
+            # Game is over at the leaf, get the actual outcome
+            outcome = leaf_node.state.get_game_outcome() # Returns 1, -1, or 0
+            # Value for backprop is the outcome from the perspective of the player AT THE LEAF NODE
+            value_v = float(outcome) if leaf_node.playerTurn == 0 else -float(outcome)
+            if outcome == 0: value_v = 0.0 # Handle draw explicitly
+            lg.logger_mcts.info("Leaf node %s is terminal. Outcome = %.1f (perspective of player %d)",
+                                leaf_node.id, value_v, leaf_node.playerTurn)
 
-	def get_root_edges(self):
-		return self.root.edges
+        # c. Backpropagate the obtained value
+        mcts.backFill(leaf_node, value_v, breadcrumbs) # Pass leaf_node for perspective check
+
+    # 3. Get Action Probabilities (pi_target) from Root Visit Counts
+    root_edges = mcts.get_root_edges()
+    pi_target = np.zeros(config['ACTION_SIZE']) # Use ACTION_SIZE from config
+    visit_counts = [] # Store (action, visits) for choosing the move
+    total_visits = 0
+
+    for action, edge in root_edges.items():
+        action_index = get_action_index(action, config) # Pass config
+        if action_index >= config['ACTION_SIZE']:
+             lg.logger_mcts.error("Action %s maps to index %d >= ACTION_SIZE %d", action, action_index, config['ACTION_SIZE'])
+             continue # Skip invalid index
+        
+        visits = edge.stats['N']
+        pi_target[action_index] = visits
+        visit_counts.append((action, visits))
+        total_visits += visits
+
+    if total_visits > 0:
+        pi_target = pi_target / total_visits # Normalize to create probability distribution
+    else:
+        # Handle case where root was perhaps terminal or no simulations ran
+        lg.logger_mcts.warning("MCTS root had zero total visits after simulations.")
+        # Fallback: Assign uniform probability over legal moves?
+        legal_moves = game_state.get_legal_moves()
+        num_legal = len(legal_moves)
+        if num_legal > 0:
+            uniform_prob = 1.0 / num_legal
+            for move in legal_moves:
+                action_index = get_action_index(move, config)
+                pi_target[action_index] = uniform_prob
+
+    # 4. Choose the Move to Play
+    # Deterministic: Choose move with highest visit count
+    # TODO: Implement temperature parameter for exploration if needed, especially early in training
+    best_action = None
+    max_visits = -1
+    for action, visits in visit_counts:
+        if visits > max_visits:
+            max_visits = visits
+            best_action = action
+
+    if best_action is None:
+        lg.logger_mcts.warning("MCTS could not select a best action (max_visits = %d). Falling back to random.", max_visits)
+        legal_moves = game_state.get_legal_moves()
+        if legal_moves:
+            best_action = random.choice(legal_moves)
+        else:
+            lg.logger_mcts.error("MCTS failed, and no legal moves exist. Game should have ended.")
+            # This state suggests an issue earlier in the game logic or MCTS.
+            # Depending on robustness needs, you might return None or raise an Exception.
+            # For now, let's return None and let the caller handle it.
+            return None, pi_target # Indicate failure
+
+    return best_action, pi_target
