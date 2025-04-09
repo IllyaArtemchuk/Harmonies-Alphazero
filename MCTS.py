@@ -1,6 +1,6 @@
 import numpy as np
 from config import * # Assuming this imports MCTS_SIMS, CPUCT, EPSILON, ALPHA, ACTION_SIZE, NUM_HEXES etc.
-from funcs import create_state_tensor, get_action_index 
+from funcs import create_state_tensors, get_action_index 
 import random
 import loggers as lg # Your logging setup
 
@@ -244,11 +244,10 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config):
         # b. Expand & Evaluate Leaf Node (if not terminal)
         if not leaf_node.state.is_game_over():
             # Prepare NN input (ensure format matches NN's forward method)
-            # This might involve calling create_state_tensor and other feature prep funcs
-            state_tensor = create_state_tensor(leaf_node.state) # Adjust if needed
+            board_tensor, global_features_tensor = create_state_tensors(leaf_node.state)
 
             # Predict policy and value using the NN
-            policy_p, value_v = model_manager.predict(state_tensor)
+            policy_p, value_v = model_manager.predict(board_tensor, global_features_tensor)
 
             # Expand the node using the NN's policy output
             mcts.expand_leaf(leaf_node, policy_p)
