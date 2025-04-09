@@ -1,6 +1,6 @@
 import numpy as np
 from config import * # Assuming this imports MCTS_SIMS, CPUCT, EPSILON, ALPHA, ACTION_SIZE, NUM_HEXES etc.
-from funcs import create_state_tensor, get_action_index # Assuming get_action_index takes (action, config)
+from funcs import create_state_tensor, get_action_index 
 import random
 import loggers as lg # Your logging setup
 
@@ -42,7 +42,7 @@ class Edge():
                 }
 
 class MCTS():
-    def __init__(self, root_node, cpuct):
+    def __init__(self, root_node, mcts_config):
         """
         Initializes the MCTS search tree.
 
@@ -52,7 +52,7 @@ class MCTS():
         """
         self.root = root_node
         self.tree = {} # Stores all nodes encountered in this search {node.id: Node}
-        self.cpuct = cpuct
+        self.cpuct = mcts_config['cpuct']
         self.addNode(root_node) # Add root node to the tree dictionary
 
     def __len__(self):
@@ -83,8 +83,8 @@ class MCTS():
 
             # Add Dirichlet noise at the root for exploration
             if currentNode == self.root:
-                epsilon = EPSILON
-                nu = np.random.dirichlet([ALPHA] * len(currentNode.edges))
+                epsilon = mcts_config['dirichlet_epsilon']
+                nu = np.random.dirichlet(mcts_config['dirichlet_alpha'] * len(currentNode.edges))
             else:
                 epsilon = 0
                 nu = [0] * len(currentNode.edges) # Placeholder, only used if epsilon > 0
@@ -129,7 +129,7 @@ class MCTS():
         # Return the leaf node found and the path taken
         return currentNode, breadcrumbs
 
-    def expand_leaf(self, leaf_node, policy_p, config):
+    def expand_leaf(self, leaf_node, policy_p):
         """
         Expands a leaf node by creating child nodes and edges for all legal moves.
         Initializes the prior probabilities 'P' of the new edges using the NN policy output.
@@ -138,8 +138,6 @@ class MCTS():
             leaf_node (Node): The leaf node to expand.
             policy_p (np.ndarray): Policy vector output from the NN for the leaf node's state.
                                    Should have size ACTION_SIZE.
-            config (dict): Configuration containing ACTION_SIZE, NUM_HEXES, 
-                           coordinate_to_index_map.
         """
         lg.logger_mcts.info('------EXPANDING LEAF NODE %s------', leaf_node.id)
         # Get all legal actions from the leaf node's state
@@ -151,7 +149,7 @@ class MCTS():
 
         for move in legal_moves:
             # Get the prior probability for this specific move from the NN's policy output
-            action_index = get_action_index(move, config) # Map game move -> flat index
+            action_index = get_action_index(move) # Map game move -> flat index
             prior_p = policy_p[action_index]
 
             # Create the next state by applying the move (MUST return a NEW state object)
@@ -219,7 +217,7 @@ class MCTS():
         return self.root.edges
 
 
-def get_best_action_and_pi(game_state, model_manager, config):
+def get_best_action_and_pi(game_state, model_manager, mcts_config):
     """
     Runs MCTS simulation to determine the best move from the current state.
 
@@ -235,10 +233,10 @@ def get_best_action_and_pi(game_state, model_manager, config):
     """
     # 1. Initialize MCTS Tree for this specific move decision
     root_node = Node(game_state)
-    mcts = MCTS(root_node, config['cpuct']) # Use cpuct from config
+    mcts = MCTS(root_node, mcts_config['cpuct']) # Use cpuct from config
 
     # 2. Run MCTS Simulations
-    for _ in range(config['MCTS_SIMS']): # Use MCTS_SIMS from config
+    for _ in range(mcts_config['num_simulations']): # Use MCTS_SIMS from config
         # --- Execute one simulation ---
         # a. Select leaf node using PUCT
         leaf_node, breadcrumbs = mcts.moveToLeaf()
@@ -253,7 +251,7 @@ def get_best_action_and_pi(game_state, model_manager, config):
             policy_p, value_v = model_manager.predict(state_tensor)
 
             # Expand the node using the NN's policy output
-            mcts.expand_leaf(leaf_node, policy_p, config) # Pass config
+            mcts.expand_leaf(leaf_node, policy_p)
         else:
             # Game is over at the leaf, get the actual outcome
             outcome = leaf_node.state.get_game_outcome() # Returns 1, -1, or 0
@@ -268,15 +266,15 @@ def get_best_action_and_pi(game_state, model_manager, config):
 
     # 3. Get Action Probabilities (pi_target) from Root Visit Counts
     root_edges = mcts.get_root_edges()
-    pi_target = np.zeros(config['ACTION_SIZE']) # Use ACTION_SIZE from config
+    pi_target = np.zeros(mcts_config['action_size']) # Use ACTION_SIZE from config
     visit_counts = [] # Store (action, visits) for choosing the move
     total_visits = 0
 
     for action, edge in root_edges.items():
-        action_index = get_action_index(action, config) # Pass config
-        if action_index >= config['ACTION_SIZE']:
-             lg.logger_mcts.error("Action %s maps to index %d >= ACTION_SIZE %d", action, action_index, config['ACTION_SIZE'])
-             continue # Skip invalid index
+        action_index = get_action_index(action)
+        if action_index >= mcts_config['action_size']:
+             lg.logger_mcts.error("Action %s maps to index %d >= ACTION_SIZE %d", action, action_index, mcts_config['action_size'])
+             continue 
         
         visits = edge.stats['N']
         pi_target[action_index] = visits
@@ -294,7 +292,7 @@ def get_best_action_and_pi(game_state, model_manager, config):
         if num_legal > 0:
             uniform_prob = 1.0 / num_legal
             for move in legal_moves:
-                action_index = get_action_index(move, config)
+                action_index = get_action_index(move)
                 pi_target[action_index] = uniform_prob
 
     # 4. Choose the Move to Play

@@ -10,24 +10,41 @@ from pathlib import Path # Optional, for cleaner path handling
 
 class ModelManager:
     def __init__(self, training_config, model_config):
+        self.model_config = model_config
+        self.training_config = training_config
         self.device = torch.device(training_config['device'])
         print(f"Using device: {self.device}")
 
         # Instantiate the actual neural network model
-        self.model = AlphaZeroModel().to(self.device) # Move model to the chosen device
+        self.model = AlphaZeroModel(
+             input_channels=model_config['input_channels'],
+             cnn_filters=model_config['cnn_filters'],
+             board_size=model_config['board_size'],
+             action_size=model_config['action_size'],
+             global_feature_size=model_config['global_feature_size'],
+             value_hidden_dim=model_config['value_head_hidden_dim'],
+             num_res_blocks=model_config['num_res_blocks']
+             # Add policy/value head conv filter counts if they vary
+        ).to(self.device) 
 
-        # Define the optimizer
-        self.learning_rate = LEARNING_RATE
-        ## TODO: Implement different optimizers
-        self.optimizer = optim.Adam( # Or optim.SGD, etc.
-            self.model.parameters(),
-            lr=self.learning_rate,
-            weight_decay=REG_CONST
-        )
+        self.learning_rate = training_config['learning_rate'] 
+
+        if training_config.get('optimizer_type', 'Adam') == 'Adam':
+            self.optimizer = optim.Adam(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                weight_decay=training_config['weight_decay']
+            )
+        else:
+            self.optimizer = optim.SGD(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                momentum=training_config.get('momentum', 0.9)
+             )
 
         self.value_loss_fn = nn.MSELoss()
-        self.value_loss_weight = VALUE_LOSS_WEIGHT
-        self.policy_loss_weight = POLICY_LOSS_WEIGHT
+        self.value_loss_weight = training_config['value_loss_weight'] 
+        self.policy_loss_weight = training_config['policy_loss_weight'] 
 
     def predict(self, board_tensor, global_features_tensor):
         """
@@ -47,11 +64,11 @@ class ModelManager:
 
         if global_features_tensor.dim() == 1:
             global_features_tensor = global_features_tensor.unsqueeze(0)
-        global_features_tensor.to(self.device)
+        global_features_tensor = global_features_tensor.to(self.device)
 
         self.model.eval() # Set model to evaluation mode (disables dropout, affects batchnorm)
         with torch.no_grad(): # Disable gradient calculations for inference
-            policy_logits, value = self.model(board_tensor, global_features_tensor) # Assuming forward returns logits for policy
+            policy_logits, value = self.model(board_tensor, global_features_tensor)
             policy_probs = torch.softmax(policy_logits, dim=1)
 
         # Detach, move to CPU, convert to numpy
@@ -105,6 +122,8 @@ class ModelManager:
         filepath = folder_path / filename
 
         state = {
+            'model_config': self.model_config,
+            'training_config': self.training_config,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             # Add other things if needed: epoch, best_loss, etc.
@@ -141,35 +160,35 @@ class ModelManager:
 
     
 class AlphaZeroModel(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels, cnn_filters, board_size, action_size, 
+                 global_feature_size, value_hidden_dim, num_res_blocks,
+                 policy_head_conv_filters=2, value_head_conv_filters=1):
         super(AlphaZeroModel, self).__init__()
-        H, W = BOARD_SIZE
+        H, W = board_size
 
         # Initial Conv layer
-        self.conv = nn.Conv2d(INPUT_CHANNELS, CNN_FILTERS, kernel_size=2, padding='same')
-        self.bn = nn.BatchNorm2d(CNN_FILTERS)
+        self.conv = nn.Conv2d(input_channels, cnn_filters, kernel_size=2, padding='same')
+        self.bn = nn.BatchNorm2d(cnn_filters)
 
         # Residual tower
         self.residual_blocks = nn.ModuleList([
-            ResidualBlock(CNN_FILTERS, kernel_size=2) for _ in range(6)
+            ResidualBlock(cnn_filters, kernel_size=2) for _ in range(num_res_blocks)
         ])
 
         # --- Policy Head Components ---
-        self.policy_conv_filters = 2 
-        self.policy_conv = nn.Conv2d(CNN_FILTERS, self.policy_conv_filters, kernel_size=1)
-        self.policy_bn = nn.BatchNorm2d(self.policy_conv_filters)
-        policy_conv_flat_size = self.policy_conv_filters * H * W
+        self.policy_conv = nn.Conv2d(cnn_filters, policy_head_conv_filters, kernel_size=1)
+        self.policy_bn = nn.BatchNorm2d(policy_head_conv_filters)
+        policy_conv_flat_size =  policy_head_conv_filters * H * W
         # FC layer now takes flattened conv + global features
-        self.policy_fc = nn.Linear(policy_conv_flat_size + GLOBAL_FEATURE_SIZE, ACTION_SIZE) 
+        self.policy_fc = nn.Linear(policy_conv_flat_size + global_feature_size, action_size) 
         
         # --- Value Head Components ---
-        self.value_conv_filters = 1 
-        self.value_conv = nn.Conv2d(CNN_FILTERS, self.value_conv_filters, kernel_size=1)
-        self.value_bn = nn.BatchNorm2d(self.value_conv_filters)
-        value_conv_flat_size = self.value_conv_filters * H * W
+        self.value_conv = nn.Conv2d(cnn_filters, value_head_conv_filters, kernel_size=1)
+        self.value_bn = nn.BatchNorm2d(value_head_conv_filters)
+        value_conv_flat_size = value_head_conv_filters * H * W
         # FC layer 1 now takes flattened conv + global features
-        self.value_fc1 = nn.Linear(value_conv_flat_size + GLOBAL_FEATURE_SIZE, VALUE_HEAD_HIDDEN_DIM)
-        self.value_fc2 = nn.Linear(VALUE_HEAD_HIDDEN_DIM, 1)
+        self.value_fc1 = nn.Linear(value_conv_flat_size + global_feature_size, value_hidden_dim)
+        self.value_fc2 = nn.Linear(value_hidden_dim, 1)
         
     def forward(self, x_board, x_global):
         # x_body shape [Batch, cnn_filters, H, W]

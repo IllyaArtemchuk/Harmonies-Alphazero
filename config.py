@@ -38,11 +38,12 @@ mcts_config = {
     'num_simulations': 50,                     # MCTS simulations per move (MCTS_SIMS)
     'cpuct': 1.0,                              # Exploration constant for PUCT (CPUCT)
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
-    'dirichlet_alpha': 0.8,                    # Shape parameter for noise (ALPHA) - Note: 0.8 is high, often lower values like 0.03-0.3 are used.
-    'dirichlet_epsilon': 0.2,                  # Weight of noise vs policy priors (EPSILON) - Note: 0.2 or 0.25 are common.
+    'dirichlet_alpha': 0.4,                   
+    'dirichlet_epsilon': 0.2,                  
     # --- Temperature parameter for move selection ---
     'turns_until_tau0': 10,                    # Turn after which move selection becomes deterministic (greedy based on visits)
                                                # Before this turn, visits^(1/tau) is used, tau=1 usually.
+    'action_size': model_config['action_size']
 }
 
 self_play_config = {
@@ -57,30 +58,8 @@ self_play_config = {
     'eval_win_rate_threshold': 0.55,        # Win rate needed for new model to become the 'best'
     
     # --- Info needed by helper functions ---
-    'action_size': model_config['action_size'], # Ensure consistency
-    'num_hexes': NUM_HEXES,                     # Number of valid hexes on the board
-    'coordinate_to_index_map': coordinate_to_index_map, # The pre-calculated mapping
+    'action_size': model_config['action_size'],
+    'num_hexes': NUM_HEXES,                    
+    'coordinate_to_index_map': coordinate_to_index_map
 }
 
-# ============================================
-# Example Usage (in other files)
-# ============================================
-# from config import model_config, training_config, mcts_config, self_play_config
-# 
-# # In ModelManager.__init__
-# # self.learning_rate = training_config['learning_rate']
-# # self.model = AlphaZeroModel(**model_config) # Pass dict using **kwargs
-# 
-# # In Trainer.__init__
-# # self.mcts_settings = mcts_config
-# # self.self_play_settings = self_play_config
-#
-# # In get_best_action_and_pi(..., config_dict)
-# # sims = config_dict['num_simulations']
-# # cpuct = config_dict['cpuct']
-# # alpha = config_dict['dirichlet_alpha']
-# # eps = config_dict['dirichlet_epsilon']
-#
-# # In main training loop
-# # for iter in range(self_play_config['num_iterations']):
-# #    ...

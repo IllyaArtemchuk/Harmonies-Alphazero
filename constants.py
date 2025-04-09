@@ -30,6 +30,7 @@ INITIAL_BAG = {
 }
 NUM_PILES = 5
 PILE_SIZE = 3
+NUM_HEXES = 23
 EMPTY_HEX_END_THRESHOLD = 2
 
 sorted_coords = sorted(list(VALID_HEXES)) 
