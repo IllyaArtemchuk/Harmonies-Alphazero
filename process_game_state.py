@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 def create_state_tensors(game_state):
-    return [create_board_tensor(game_state), create_global_features(game_state)]
+    return (create_board_tensor(game_state), create_global_features(game_state))
 
 def create_board_tensor(game_state):
     """

@@ -1,106 +1,111 @@
-from MCTS import MCTS
 from config import *
-
+from harmonies_engine import HarmoniesGameState
+from process_game_state import create_state_tensors
+from MCTS import get_best_action_and_pi
 
 class Trainer():
     def __init__(self):
         pass
-    # def choose_move_alphazero(self, game_state, model_manager):
-    #     """
-    #     Runs MCTS simulation to determine the best move from the current state.
 
-    #     Args:
-    #         game_state: The current HarmoniesGameState object.
-    #         model_manager: Your ModelManager instance containing the NN and predict method.
-    #         config: Dictionary with hyperparameters (e.g., MCTS_SIMS, cpuct).
+def run_self_play_game(model_manager, mcts_config, self_play_config):
+    """
+    Plays one full game using AlphaZero MCTS and collects training examples.
 
-    #     Returns:
-    #         tuple: (chosen_move, pi_target)
-    #             chosen_move: The action selected by MCTS (e.g., pile index or (tile_idx, coord)).
-    #             pi_target: The normalized visit count distribution (training target for policy head).
-    #                     Should be a numpy array of size matching the action space (e.g., 74).
-    #     """
-    #     # 1. Initialize MCTS Tree for this move decision
-    #     root_node = Node(game_state) # Assuming Node takes a game_state
-    #     mcts = MCTS(root_node, CPUCT) # Assuming MCTS takes root and c_puct
+    Args:
+        model_manager: The ModelManager instance.
+        mcts_config: Dictionary with MCTS hyperparameters.
+        self_play_config: Dictionary with self-play hyperparameters.
 
-    #     # 2. Run MCTS Simulations
-    #     for _ in range(MCTS_SIMS):
-    #         # --- Execute one simulation ---
-    #         # a. Select leaf node using PUCT (handle moving NN predict call here)
-    #         leaf_node, breadcrumbs = mcts.moveToLeaf_and_get_path() # Modify moveToLeaf
+    Returns:
+        list: A list of training examples for this game, where each example is a tuple:
+              (board_tensor, global_features_tensor, pi_target_tensor, outcome_perspective_tensor).
+              Returns empty list if a significant error occurs during the game.
+    """
+    game = HarmoniesGameState() # Start new game
+    # Store history entries as dictionaries for clarity
+    game_history = [] # Stores {'board_rep': tensor, 'global_rep': tensor, 'player': int, 'pi': ndarray}
 
-    #         # b. Expand & Evaluate Leaf Node (if not terminal)
-    #         if not leaf_node.state.is_game_over(): # Check if terminal
-    #             # Prepare NN input (spatial + non-spatial)
-    #             state_tensor = create_state_tensor(leaf_node.state) # Plus non-spatial features if needed
-    #             # Predict policy and value
-    #             policy_p, value_v = model_manager.predict(state_tensor)
-                
-    #             # Expand the node: create children edges/nodes and set prior 'P' using policy_p
-    #             mcts.expand_leaf(leaf_node, policy_p) 
-    #         else:
-    #             # Game is over at the leaf, get the actual outcome
-    #             outcome = leaf_node.state.get_game_outcome() # Returns 1, -1, or 0
-    #             # Ensure outcome is from the perspective of the player whose turn it *was* at the leaf
-    #             # This might need adjustment based on how get_game_outcome works
-    #             value_v = outcome # Or adjust perspective if needed 
+    while not game.is_game_over():
+        current_player_idx = game.get_current_player() # Get the player index (0 or 1)
 
-    #         # c. Backpropagate the value
-    #         mcts.backFill(value_v, breadcrumbs) # Pass value and path
+        # --- Generate NN Inputs (State Representation) ---
+        # Calculate these BEFORE the MCTS search for the current state
+        try:
+            state_tensors = create_state_tensors(game)
+            state_tensors = tuple(item.float() for item in state_tensors) # Ensure Float
 
-    #     # 3. Get Action Probabilities (pi_target) from Root Visit Counts
-    #     # This depends on how you store edges/children at the root
-    #     root_edges = mcts.get_root_edges() # Need a way to get edges/children of the root
-    #     pi_target = np.zeros(config['ACTION_SIZE']) # e.g., 74
-    #     total_visits = 0
+        except Exception as e:
+             print(f"ERROR: Failed to generate state representation for NN: {e}")
+             print(f"State:\n{game}")
+             return [] # Abort game if representation fails
+
+        # --- Run MCTS Search ---
+        try:
+            # Pass the current game state (clone is good practice), model_manager, and configs
+            best_action, pi_target = get_best_action_and_pi(
+                game.clone(), # Pass a clone for safety during search
+                model_manager, 
+                mcts_config, 
+                self_play_config
+            ) 
+        except Exception as e:
+            print(f"ERROR: Exception during MCTS search (get_best_action_and_pi): {e}")
+            print(f"State:\n{game}")
+            return [] # Abort game
+
+        # --- Handle MCTS Failure ---
+        if best_action is None:
+            print(f"WARNING: MCTS failed to return a valid action for player {current_player_idx}. Aborting game.")
+            print(f"State:\n{game}")
+            # Return empty list as this game's data might be unreliable
+            return [] 
         
-    #     edge_data_for_selection = [] # Store (action, visits, edge) for choosing move
+        # --- Store History (BEFORE applying move) ---
+        # Store the NN inputs, the player, and the MCTS policy result
+        game_history.append({
+            'state_rep': state_tensors, # Store the tuple (board_tensor, global_features)
+            'player': current_player_idx, 
+            'pi': pi_target # pi_target should be a numpy array from MCTS
+        })
 
-    #     # Iterate through edges/children connected to the root
-    #     # The structure depends on your MCTS implementation (dict or list)
-    #     for action, edge in root_edges.items(): # Assuming dict: {action: Edge}
-    #         action_index = self._get_action_index(action, config) # You need a function to map game action -> policy vector index
-    #         pi_target[action_index] = edge.stats['N']
-    #         total_visits += edge.stats['N']
-    #         edge_data_for_selection.append((action, edge.stats['N']))
-            
-    #     if total_visits > 0:
-    #         pi_target = pi_target / total_visits
-    #     else:
-    #         # Handle case where no simulations were run or root has no children (shouldn't happen?)
-    #         # Maybe assign uniform probability to legal moves? Or raise error?
-    #         print("Warning: MCTS root had zero total visits.")
-    #         # Fallback: uniform probability over legal moves? Requires care.
-    #         legal_moves = game_state.get_legal_moves()
-    #         num_legal = len(legal_moves)
-    #         if num_legal > 0:
-    #             uniform_prob = 1.0 / num_legal
-    #             for move in legal_moves:
-    #                 action_index = self._get_action_index(move, config)
-    #                 pi_target[action_index] = uniform_prob
-            
+        # --- Apply Move ---
+        try:
+            game = game.apply_move(best_action) 
+        except Exception as e:
+            print(f"ERROR: Exception during game.apply_move: {e}. Aborting game.")
+            # Log state *before* the failed move
+            # (Access state from the last 'state_representation' or re-generate if needed)
+            print(f"Action attempted: {best_action}")
+            return [] # Return empty list for this failed game
 
-    #     # 4. Choose the Move to Play
-    #     # Usually select the move with the highest visit count (greedy)
-    #     # Optional: Add temperature parameter for exploration during early self-play
-    #     best_action = None
-    #     max_visits = -1
-    #     for action, visits in edge_data_for_selection:
-    #         if visits > max_visits:
-    #             max_visits = visits
-    #             best_action = action
-                
-    #     if best_action is None:
-    #         # Handle edge case: No valid moves or MCTS failed? Choose randomly?
-    #         print("Warning: MCTS could not select a best action. Choosing random legal move.")
-    #         legal_moves = game_state.get_legal_moves()
-    #         if legal_moves:
-    #             best_action = random.choice(legal_moves)
-    #         else:
-    #             # This means the game should likely have ended.
-    #             raise Exception("MCTS failed to find a move and no legal moves exist.")
+    # Game over
+    final_outcome = game.get_game_outcome()
 
+    if final_outcome is None: # Should not happen if game_is_over is true
+         print("ERROR: Game ended but get_game_outcome returned None!")
+         return []
 
-    #     return best_action, pi_target
-    
+    # --- Process Game History into Final Training Data ---
+    training_data = []
+    for history_entry in game_history:
+        s_board, s_global = history_entry['state_rep'] # Unpack the stored state representation
+        pi_target_np = history_entry['pi']
+        player_turn = history_entry['player']
+
+        # Determine outcome z from the perspective of player_turn
+        if final_outcome == 0: # Draw
+            outcome_perspective = 0.0
+        elif player_turn == 0: # It was Player 0's turn
+            outcome_perspective = float(final_outcome) # 1.0 if P0 won, -1.0 if P1 won
+        else: # It was Player 1's turn
+            outcome_perspective = -float(final_outcome) # -1.0 if P0 won, 1.0 if P1 won
+
+        # Append final training tuple, converting numpy pi and scalar outcome to tensors
+        training_data.append((
+            s_board,                                     # Already a tensor
+            s_global,                                    # Already a tensor
+            torch.tensor(pi_target_np, dtype=torch.float), # Convert pi numpy array to tensor
+            torch.tensor([outcome_perspective], dtype=torch.float) # Outcome as single-element tensor
+        ))
+
+    return training_data

@@ -1,10 +1,6 @@
-from torch import *
-
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import os
 from config import *
 from pathlib import Path # Optional, for cleaner path handling
 
@@ -83,7 +79,7 @@ class ModelManager:
         Performs a single training step on a batch of data.
 
         Args:
-            states (torch.Tensor): Batch of input state tensors.
+            board_tensor, global_features_tensor (torch.Tensor): Batches of input state tensors.
             target_policies (torch.Tensor): Batch of target policy vectors (pi).
             target_values (torch.Tensor): Batch of target values (z).
 
@@ -102,9 +98,14 @@ class ModelManager:
         policy_logits, value_pred = self.model(board_tensor, global_features_tensor)
 
         # Calculate losses
+
+        # policy
         log_policy_pred = torch.log_softmax(policy_logits, dim=1)
         policy_loss = -torch.sum(target_policies * log_policy_pred, dim=1).mean()
+
+        # value
         value_loss = self.value_loss_fn(value_pred, target_values)
+
         total_loss = (self.policy_loss_weight * policy_loss + 
                       self.value_loss_weight * value_loss)
 

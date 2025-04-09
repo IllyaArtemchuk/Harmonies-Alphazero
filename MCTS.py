@@ -1,6 +1,6 @@
 import numpy as np
 from config import * # Assuming this imports MCTS_SIMS, CPUCT, EPSILON, ALPHA, ACTION_SIZE, NUM_HEXES etc.
-from funcs import create_state_tensors, get_action_index 
+from process_game_state import create_state_tensors, get_action_index 
 import random
 import loggers as lg # Your logging setup
 
