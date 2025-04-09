@@ -1,33 +1,86 @@
 import torch
+from constants import (
+    ACTION_SIZE, 
+    BOARD_SIZE, 
+    INPUT_CHANNELS, 
+    GLOBAL_FEATURE_SIZE,
+    coordinate_to_index_map,
+    NUM_HEXES 
+) 
 
-#### SELF PLAY
-MCTS_SIMS = 50
-TURNS_UNTIL_TAU0 = 10 # turn on which it starts playing deterministically
-CPUCT = 1
-EPSILON = 0.2
-ALPHA = 0.8
-ACTION_SIZE = 74 # Update this based on your action space
-INPUT_CHANNELS = 38 # TODO: Check if this is actually 38
-BOARD_SIZE = (5, 6)
-NUM_HEXES: 23 # Or 19/etc. based on your final grid
-    # Add coordinate_to_index_map (precompute this)
-REPLAY_BUFFER_SIZE = 50000
-NUM_ITERS = 100 # Total training iterations
-NUM_SELF_PLAY_GAMES_PER_ITER = 25 # Games per training iteration
-NUM_EPOCHS_PER_ITER =  1 
-CHECKPOINT_FOLDER = './harmonies_az_run/'
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu', 
+model_config = {
+    # Parameters defining the NN architecture passed to AlphaZeroModel.__init__
+    'input_channels': INPUT_CHANNELS,          # Channels from create_board_tensor (e.g., 38)
+    'cnn_filters': 75,                         # Filters in conv/residual blocks (CNN_FILTERS)
+    'board_size': BOARD_SIZE,                  # Tuple (H, W) of the spatial tensor (e.g., (5, 6))
+    'action_size': ACTION_SIZE,                # Total size of the policy output vector (e.g., 74)
+    'global_feature_size': GLOBAL_FEATURE_SIZE,# Size of the concatenated global feature vector (e.g., 42)
+    'value_head_hidden_dim': 256,              # Size of the hidden layer in the value head's MLP (VALUE_HEAD_HIDDEN_DIM)
+    'num_res_blocks': 6,                       # Number of residual blocks in the CNN body
+    'policy_head_conv_filters': 2,             # Filters in the policy head's initial 1x1 conv
+    'value_head_conv_filters': 1,              # Filters in the value head's initial 1x1 conv
+}
 
+training_config = {
+    # Parameters controlling the training optimization process passed to ModelManager.__init__
+    'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+    'optimizer_type': 'Adam',                  # Optimizer choice (Implicit before)
+    'learning_rate': 0.001,                    # Initial learning rate (LEARNING_RATE)
+    'weight_decay': 0.0001,                    # L2 regularization strength (REG_CONST)
+    'value_loss_weight': 0.5,                  # Weight for value loss term (VALUE_LOSS_WEIGHT)
+    'policy_loss_weight': 0.5,                 # Weight for policy loss term (POLICY_LOSS_WEIGHT)
+    'batch_size': 64,                          # Examples per training step (BATCH_SIZE)
+    # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
+    # Note: TRAINING_LOOPS = 10 seems redundant/replaced by NUM_ITERS in self_play_config
+}
 
+mcts_config = {
+    'num_simulations': 50,                     # MCTS simulations per move (MCTS_SIMS)
+    'cpuct': 1.0,                              # Exploration constant for PUCT (CPUCT)
+    # --- Parameters for Dirichlet noise added to root priors during self-play ---
+    'dirichlet_alpha': 0.8,                    # Shape parameter for noise (ALPHA) - Note: 0.8 is high, often lower values like 0.03-0.3 are used.
+    'dirichlet_epsilon': 0.2,                  # Weight of noise vs policy priors (EPSILON) - Note: 0.2 or 0.25 are common.
+    # --- Temperature parameter for move selection ---
+    'turns_until_tau0': 10,                    # Turn after which move selection becomes deterministic (greedy based on visits)
+                                               # Before this turn, visits^(1/tau) is used, tau=1 usually.
+}
 
-#### RETRAINING
-BATCH_SIZE = 64
-EPOCHS = 1
-REG_CONST = 0.0001
-LEARNING_RATE = 0.001
-TRAINING_LOOPS = 10
-VALUE_LOSS_WEIGHT = .5
-POLICY_LOSS_WEIGHT = .5
+self_play_config = {
+    'num_iterations': 100,                  # Total number of self-play -> train iterations (NUM_ITERS)
+    'num_games_per_iter': 25,               # Number of games generated per iteration (NUM_SELF_PLAY_GAMES_PER_ITER)
+    'epochs_per_iter': 1,                   # Number of training epochs over the buffer per iteration (NUM_EPOCHS_PER_ITER / EPOCHS)
+    'replay_buffer_size': 50000,            # Max number of (s, pi, z) examples stored (REPLAY_BUFFER_SIZE)
+    'checkpoint_folder': './harmonies_az_run/', # Folder to save model checkpoints (CHECKPOINT_FOLDER)
+    
+    # --- Evaluation Settings (run periodically, e.g., after N iterations) ---
+    'eval_episodes': 20,                    # Number of games to play between current and best model (EVAL_EPISODES)
+    'eval_win_rate_threshold': 0.55,        # Win rate needed for new model to become the 'best'
+    
+    # --- Info needed by helper functions ---
+    'action_size': model_config['action_size'], # Ensure consistency
+    'num_hexes': NUM_HEXES,                     # Number of valid hexes on the board
+    'coordinate_to_index_map': coordinate_to_index_map, # The pre-calculated mapping
+}
 
-#### EVALUATION
-EVAL_EPISODES = 20
+# ============================================
+# Example Usage (in other files)
+# ============================================
+# from config import model_config, training_config, mcts_config, self_play_config
+# 
+# # In ModelManager.__init__
+# # self.learning_rate = training_config['learning_rate']
+# # self.model = AlphaZeroModel(**model_config) # Pass dict using **kwargs
+# 
+# # In Trainer.__init__
+# # self.mcts_settings = mcts_config
+# # self.self_play_settings = self_play_config
+#
+# # In get_best_action_and_pi(..., config_dict)
+# # sims = config_dict['num_simulations']
+# # cpuct = config_dict['cpuct']
+# # alpha = config_dict['dirichlet_alpha']
+# # eps = config_dict['dirichlet_epsilon']
+#
+# # In main training loop
+# # for iter in range(self_play_config['num_iterations']):
+# #    ...

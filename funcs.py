@@ -3,104 +3,75 @@ from config import *
 import numpy as np
 import torch
 
-def create_state_tensor(game_state):
-    # Define grid boundaries based on your hex coordinates
-    q_min, q_max = -2, 3
+def create_board_tensor(game_state):
+    """
+    Creates a spatial tensor representing board state, player, and phase.
+    Output shape: (C, H, W) = (38, 5, 6)
+    """
+    # Define grid boundaries (assuming 5-4-5-4-5 grid)
+    q_min, q_max = -2, 3 
     r_min, r_max = -2, 2
     
     # Calculate dimensions
     width = q_max - q_min + 1  # 6
     height = r_max - r_min + 1  # 5
     
-    # Number of channels needed for tile information
-    tile_channels = len(TILE_TYPES) * 3 * 2  # 6 tile types × 3 stack positions × 2 players
+    # Base channels: Board tiles (36) + Player (1) + Phase (1) = 38
+    num_channels = (len(TILE_TYPES) * 3 * 2) + 1 + 1
     
-    tensor = torch.zeros(tile_channels, height, width)
+    tensor = torch.zeros(num_channels, height, width, dtype=torch.float)
     
-    # Process both players' boards
-    for player in [0, 1]:
-        board = game_state.player_boards[player]
-        
-        # Fill in tile information
-        for (q, r), stack in board.items():
-            # Convert hex coordinates to tensor indices
-            x = q - q_min
-            y = r - r_min
-            
-            # Skip if outside our grid
-            if not (0 <= x < width and 0 <= y < height):
-                continue
-                
-            # Encode each tile in the stack
-            for stack_pos, tile_type in enumerate(stack):
-                if stack_pos >= 3:  # Only handle stacks up to height 3
-                    break
-                
-                # Calculate channel index
-                tile_idx = TILE_TYPES.index(tile_type)
-                channel_idx = player * (len(TILE_TYPES) * 3) + (tile_idx * 3) + stack_pos
-                
-                # Set the feature to 1
-                tensor[channel_idx, y, x] = 1
-    
-    # Create mask for valid hex positions
-    valid_positions_mask = torch.zeros(height, width)
+    # --- Create mask for valid hex positions ---
+    valid_positions_mask = torch.zeros(height, width, dtype=torch.float)
     for q, r in VALID_HEXES:
         x = q - q_min
         y = r - r_min
         if 0 <= x < width and 0 <= y < height:
-            valid_positions_mask[y, x] = 1
-    
-    # Apply mask to all channels
-    for c in range(tensor.shape[0]):
-        tensor[c] *= valid_positions_mask
-    
-    # Add current player channel
-    player_channel = torch.full((1, height, width), game_state.current_player, dtype=torch.float)
-    
-    # Add turn phase encoding
+            valid_positions_mask[y, x] = 1.0 # Use 1.0 for float tensor
+
+    # --- Fill in tile information (Channels 0-35) ---
+    tile_channel_offset = len(TILE_TYPES) * 3 # 18 channels per player
+    for player in [0, 1]:
+        board = game_state.player_boards[player]
+        player_offset = player * tile_channel_offset
+        
+        for (q, r), stack in board.items():
+            x = q - q_min
+            y = r - r_min
+            if not (0 <= x < width and 0 <= y < height): continue
+                
+            for stack_pos, tile_type in enumerate(stack):
+                if stack_pos >= 3: break # Max stack height encoding = 3
+                
+                try:
+                    tile_idx = TILE_TYPES.index(tile_type)
+                except ValueError:
+                    print(f"Warning: Unknown tile type '{tile_type}' encountered in state.")
+                    continue # Skip unknown tile types
+
+                # Calculate channel index specific to tile type, stack position, and player
+                channel_idx = player_offset + (tile_idx * 3) + stack_pos
+                tensor[channel_idx, y, x] = 1.0
+
+    # --- Add current player channel (Channel 36) ---
+    player_channel_idx = tile_channel_offset * 2 # 36
+    tensor[player_channel_idx, :, :] = float(game_state.current_player)
+
+    # --- Add turn phase channel (Channel 37) ---
+    phase_channel_idx = player_channel_idx + 1 # 37
     phase_list = ["choose_pile", "place_tile_1", "place_tile_2", "place_tile_3"]
-    if game_state.turn_phase in phase_list:
-        phase_idx = phase_list.index(game_state.turn_phase)
-    else:
-        phase_idx = 0  # Default for other phases like "game_over"
-    phase_channel = torch.full((1, height, width), phase_idx / 3, dtype=torch.float)
-    
-    # Apply mask to additional channels
-    player_channel *= valid_positions_mask
-    phase_channel *= valid_positions_mask
-    
-    # Add channels for available piles (each pile as a separate channel)
-    pile_channels = []
-    for pile_idx, pile in enumerate(game_state.available_piles):
-        for tile_type in TILE_TYPES:
-            # Count occurrences of this tile type in the pile
-            count = pile.count(tile_type)
-            # Create a channel with the count value
-            pile_channel = torch.full((1, height, width), count / 3, dtype=torch.float)
-            pile_channel *= valid_positions_mask
-            pile_channels.append(pile_channel)
-    
-    # Add channels for tiles in hand
-    hand_channels = []
-    for tile_type in TILE_TYPES:
-        # Count occurrences of this tile type in the hand
-        count = game_state.tiles_in_hand.count(tile_type)
-        # Create a channel with the count value
-        hand_channel = torch.full((1, height, width), count / 3, dtype=torch.float)
-        hand_channel *= valid_positions_mask
-        hand_channels.append(hand_channel)
-    
-    # Concatenate all channels
-    channels_to_concat = [tensor, player_channel, phase_channel]
-    if pile_channels:
-        channels_to_concat.extend(pile_channels)
-    if hand_channels:
-        channels_to_concat.extend(hand_channels)
-    
-    full_tensor = torch.cat(channels_to_concat, dim=0)
-    
-    return full_tensor
+    try:
+        # Normalize phase index (0 to 3) -> (0.0 to 1.0)
+        phase_val = phase_list.index(game_state.turn_phase) / 3.0 
+    except ValueError:
+        phase_val = 0.0 # Default for other phases like "game_over"
+    tensor[phase_channel_idx, :, :] = phase_val
+
+    # --- Apply valid hex mask to ALL channels ---
+    # Broadcasting should work: (C, H, W) * (H, W) -> (C, H, W)
+    tensor *= valid_positions_mask
+
+    return tensor
 
 def create_global_features(game_state):
     """
