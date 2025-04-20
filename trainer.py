@@ -1,6 +1,5 @@
 import copy
 import time
-import numpy as np
 from model import ModelManager
 from config import *
 from harmonies_engine import HarmoniesGameState
@@ -20,7 +19,7 @@ class Trainer:
             training_config (dict): Configuration for NN training.
         """
         self.model_manager = model_manager
-        self.mcts_config = mcts_config
+        self.mcts_config = mcts_config 
         self.self_play_config = self_play_config
         self.training_config = training_config
 
@@ -150,7 +149,7 @@ class Trainer:
         # For simplicity, running sequentially first:
         for i in range(num_games):
              print(f"  Playing game {i+1}/{num_games}...")
-             game_data = self.run_self_play_game(data_generating_manager, self.mcts_config, self.self_play_config) 
+             game_data = self.run_self_play_game(data_generating_manager) 
              if game_data: # Only add data if game completed successfully
                  self.replay_buffer.extend(game_data)
                  new_examples += len(game_data)
@@ -380,10 +379,8 @@ class Trainer:
                 best_action, _ = get_best_action_and_pi(
                     game.clone(), 
                     current_player_manager, 
-                    self.mcts_config, 
+                    eval_mcts_config,
                     self.self_play_config # Use main config, but MCTS should be deterministic
-                    # TODO: Consider adding an 'eval_mode=True' flag to get_best_action_and_pi
-                    #       to disable root noise and force greedy action selection.
                 )
             except Exception as e:
                 print(f"ERROR during MCTS search in EVALUATION game: {e}\nState:\n{game}")
