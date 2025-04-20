@@ -24,19 +24,18 @@ model_config = {
 training_config = {
     # Parameters controlling the training optimization process passed to ModelManager.__init__
     'device': 'cuda' if torch.cuda.is_available() else 'cpu',
-    'optimizer_type': 'Adam',                  # Optimizer choice (Implicit before)
-    'learning_rate': 0.001,                    # Initial learning rate (LEARNING_RATE)
-    'weight_decay': 0.0001,                    # L2 regularization strength (REG_CONST)
-    'value_loss_weight': 0.5,                  # Weight for value loss term (VALUE_LOSS_WEIGHT)
-    'policy_loss_weight': 0.5,                 # Weight for policy loss term (POLICY_LOSS_WEIGHT)
-    'batch_size': 64,                          # Examples per training step (BATCH_SIZE)
+    'optimizer_type': 'Adam',               
+    'learning_rate': 0.001,                 
+    'weight_decay': 0.0001,                    # L2 regularization strength 
+    'value_loss_weight': 0.5,                  
+    'policy_loss_weight': 0.5,                
+    'batch_size': 64,                          
     # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
-    # Note: TRAINING_LOOPS = 10 seems redundant/replaced by NUM_ITERS in self_play_config
 }
 
 mcts_config = {
-    'num_simulations': 50,                     # MCTS simulations per move (MCTS_SIMS)
-    'cpuct': 1.0,                              # Exploration constant for PUCT (CPUCT)
+    'num_simulations': 50,                     # MCTS simulations per move
+    'cpuct': 1.0,                              # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     'dirichlet_alpha': 0.4,                   
     'dirichlet_epsilon': 0.2,                  
@@ -47,14 +46,14 @@ mcts_config = {
 }
 
 self_play_config = {
-    'num_iterations': 100,                  # Total number of self-play -> train iterations (NUM_ITERS)
-    'num_games_per_iter': 25,               # Number of games generated per iteration (NUM_SELF_PLAY_GAMES_PER_ITER)
-    'epochs_per_iter': 1,                   # Number of training epochs over the buffer per iteration (NUM_EPOCHS_PER_ITER / EPOCHS)
-    'replay_buffer_size': 50000,            # Max number of (s, pi, z) examples stored (REPLAY_BUFFER_SIZE)
+    'num_iterations': 100,                  # Total number of self-play -> train iterations 
+    'num_games_per_iter': 25,               # Number of games generated per iteration
+    'epochs_per_iter': 1,                   # Number of training epochs over the buffer per iteration
+    'replay_buffer_size': 50000,            # Max number of (s, pi, z) examples stored 
     'checkpoint_folder': './harmonies_az_run/', # Folder to save model checkpoints (CHECKPOINT_FOLDER)
     
     # --- Evaluation Settings (run periodically, e.g., after N iterations) ---
-    'eval_episodes': 20,                    # Number of games to play between current and best model (EVAL_EPISODES)
+    'eval_episodes': 20,                    # Number of games to play between current and best model
     'eval_win_rate_threshold': 0.55,        # Win rate needed for new model to become the 'best'
     
     # --- Info needed by helper functions ---
