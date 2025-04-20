@@ -38,15 +38,12 @@ class Trainer:
         self.best_model_filename = "best_model.pth.tar" # Filename for the best model checkpoint
         self._initialize_best_model() # Load or initialize the best model
 
-    def run_self_play_game(model_manager, mcts_config, self_play_config):
+    def run_self_play_game(self, model_manager):
         """
         Plays one full game using AlphaZero MCTS and collects training examples.
 
         Args:
             model_manager: The ModelManager instance.
-            mcts_config: Dictionary with MCTS hyperparameters.
-            self_play_config: Dictionary with self-play hyperparameters.
-
         Returns:
             list: A list of training examples for this game, where each example is a tuple:
                 (board_tensor, global_features_tensor, pi_target_tensor, outcome_perspective_tensor).
@@ -76,8 +73,8 @@ class Trainer:
                 best_action, pi_target = get_best_action_and_pi(
                     game.clone(), # Pass a clone for safety during search
                     model_manager, 
-                    mcts_config, 
-                    self_play_config
+                    self.mcts_config, 
+                    self.self_play_config
                 ) 
             except Exception as e:
                 print(f"ERROR: Exception during MCTS search (get_best_action_and_pi): {e}")
@@ -141,7 +138,7 @@ class Trainer:
 
         return training_data
 
-    def execute_self_play_phase(self):
+    def execute_self_play_phase(self, data_generating_manager):
         """ Runs multiple self-play games and adds data to the buffer. """
         num_games = self.self_play_config['num_games_per_iter']
         print(f"\n--- Starting Self-Play Phase ({num_games} games) ---")
@@ -153,7 +150,7 @@ class Trainer:
         # For simplicity, running sequentially first:
         for i in range(num_games):
              print(f"  Playing game {i+1}/{num_games}...")
-             game_data = self.run_self_play_game()
+             game_data = self.run_self_play_game(data_generating_manager, self.mcts_config, self.self_play_config) 
              if game_data: # Only add data if game completed successfully
                  self.replay_buffer.extend(game_data)
                  new_examples += len(game_data)
@@ -221,36 +218,46 @@ class Trainer:
 
 
     def run_training_loop(self):
-        """ Executes the main AlphaZero training loop. """
+        """ Executes the main AlphaZero training loop with evaluation. """
         print("============================================")
         print("          STARTING ALPHAZERO TRAINING       ")
         print("============================================")
         
         num_iterations = self.self_play_config['num_iterations']
+        eval_frequency = self.self_play_config.get('eval_frequency', 10) # Evaluate every N iterations
+
         for iteration in range(num_iterations):
             print(f"\n=============== ITERATION {iteration+1}/{num_iterations} ===============")
             
-            # 1. Generate game data using the current model
-            self.execute_self_play_phase()
+            # Use the BEST model for generating self-play data
+            # This is crucial: self-play should always use the strongest agent
+            data_generating_manager = self.best_model_manager 
+            # Make sure Trainer.__init__ loads/initializes best_model_manager correctly
             
-            # 2. Train the model using data from the buffer
-            self.execute_training_phase()
+            print(f"--- Generating data using model: {self.best_model_filename} ---")
+            # 1. Generate game data using the current *best* model
+            # Make sure execute_self_play_phase uses the right model manager
+            self.execute_self_play_phase(data_generating_manager) 
             
-            # 3. Save model checkpoint periodically (e.g., every iteration)
+            # 2. Train the *candidate* model using data from the buffer
+            self.execute_training_phase() # Trains self.model_manager
+            
+            # 3. Save *candidate* model checkpoint periodically
             checkpoint_folder = self.self_play_config['checkpoint_folder']
+            candidate_filename = f'iteration_{iteration+1:04d}.pth.tar'
             self.model_manager.save_checkpoint(
                 folder=checkpoint_folder, 
-                filename=f'iteration_{iteration+1:04d}.pth.tar'
+                filename=candidate_filename
             )
             
-            # 4. Optional: Save replay buffer periodically
+            # 4. Save replay buffer periodically (optional)
             buffer_folder = self.self_play_config.get('replay_buffer_folder', 'buffer')
-            if (iteration + 1) % 5 == 0: # Example: Save every 5 iterations
+            if (iteration + 1) % 5 == 0: 
                  save_buffer(self.replay_buffer, folder=buffer_folder)
                  
-            # 5. Optional: Evaluation phase (compare against best model)
-            # if (iteration + 1) % 10 == 0: # Example: Evaluate every 10 iterations
-            #     self.evaluate_model() 
+            # 5. Evaluation Phase
+            if (iteration + 1) % eval_frequency == 0: 
+                self.evaluate_model() # Compares self.model_manager vs self.best_model_manager
 
         print("\n============================================")
         print("             TRAINING COMPLETE             ")
@@ -345,6 +352,61 @@ class Trainer:
 
         end_time = time.time()
         print(f"  Time taken: {end_time - start_time:.2f} seconds")
+
+    def play_one_eval_game(self, candidate_manager, best_manager, first_player):
+        """
+        Plays one game between two models for evaluation.
+        
+        Args:
+            candidate_manager: ModelManager for the current (candidate) model.
+            best_manager: ModelManager for the best known model.
+            first_player (int): 0 or 1, indicating which model plays first (0=candidate, 1=best).
+
+        Returns:
+            int: Outcome from the perspective of the CANDIDATE model 
+                 (1 if candidate wins, -1 if best wins, 0 for draw).
+        """
+        game = HarmoniesGameState()
+        players = {0: candidate_manager, 1: best_manager} if first_player == 0 else {0: best_manager, 1: candidate_manager}
+        
+        while not game.is_game_over():
+            current_player_idx = game.get_current_player()
+            current_player_manager = players[current_player_idx]
+            
+            try:
+                # Use a deterministic MCTS search for evaluation (no noise, greedy move selection)
+                # We might need a slightly different config or flag in get_best_action_and_pi
+                # For now, assume get_best_action_and_pi uses greedy selection when called here
+                best_action, _ = get_best_action_and_pi(
+                    game.clone(), 
+                    current_player_manager, 
+                    self.mcts_config, 
+                    self.self_play_config # Use main config, but MCTS should be deterministic
+                    # TODO: Consider adding an 'eval_mode=True' flag to get_best_action_and_pi
+                    #       to disable root noise and force greedy action selection.
+                )
+            except Exception as e:
+                print(f"ERROR during MCTS search in EVALUATION game: {e}\nState:\n{game}")
+                return 0 # Treat error as a draw or handle differently
+
+            if best_action is None:
+                print(f"WARNING: MCTS failed in EVALUATION game for player {current_player_idx}. Treating as draw.\nState:\n{game}")
+                return 0 
+
+            try:
+                game = game.apply_move(best_action) 
+            except Exception as e:
+                 print(f"ERROR during apply_move in EVALUATION game: {e}.\nAction: {best_action}")
+                 return 0 # Treat error as a draw
+
+        final_outcome = game.get_game_outcome() # 1 if P0 wins, -1 if P1 wins, 0 Draw
+        if final_outcome is None: return 0 # Error case
+
+        # Adjust outcome relative to the CANDIDATE model
+        if first_player == 0: # Candidate played as P0
+             return final_outcome
+        else: # Candidate played as P1
+             return -final_outcome
         
 
     # --- Placeholder for Evaluation ---
