@@ -34,6 +34,7 @@ class MCTSConfigType(TypedDict):
     dirichlet_epsilon: float
     turns_until_tau0: int
     action_size: int
+    testing: bool
 
 
 # For self_play_config

@@ -97,11 +97,9 @@ class MCTS:
                 )
             else:
                 epsilon = 0
-                print("trying me")
                 nu = [0] * len(
                     current_node.edges
                 )  # Placeholder, only used if epsilon > 0
-                print("did i fail?")
             # Calculate total visits Ns for the current node's outgoing edges
             ns = 0
             for (
@@ -280,7 +278,6 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
     # 1. Initialize MCTS Tree for this specific move decision
     root_node = Node(game_state)
     mcts = MCTS(root_node, mcts_config)
-    print("im here")
     # 2. Run MCTS Simulations
     for _ in range(mcts_config["num_simulations"]):  # Use MCTS_SIMS from config
         # --- Execute one simulation ---

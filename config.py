@@ -55,6 +55,7 @@ mcts_config_default: MCTSConfigType = {
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
     "action_size": model_config_default["action_size"],
+    "testing": False
 }
 
 mcts_config_eval: MCTSConfigType = {
@@ -67,6 +68,7 @@ mcts_config_eval: MCTSConfigType = {
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
     "action_size": model_config_default["action_size"],
+    "testing": False
 }
 
 self_play_config_default: SelfPlayConfigType = {
@@ -87,7 +89,7 @@ self_play_config_default: SelfPlayConfigType = {
     # --- Info needed by helper functions ---
     "action_size": model_config_default["action_size"],
     "num_hexes": NUM_HEXES,
-    "coordinate_to_index_map": coordinate_to_index_map,
+    "coordinate_to_index_map": coordinate_to_index_map
 }
 
 
@@ -124,7 +126,19 @@ test_mcts_config: MCTSConfigType = {
     'dirichlet_epsilon': 0.0,   # <<< DISABLE root noise for simplicity in test run
     'turns_until_tau0': 0,      # <<< Makes move selection greedy immediately (tau=0)
     # Add eval_mode flag if get_best_action_and_pi supports it
-    'action_size': ACTION_SIZE
+    'action_size': ACTION_SIZE,
+    'testing': True
+}
+
+test_mcts_config_eval: MCTSConfigType = {
+    'num_simulations': 4,       # <<< ABSOLUTE MINIMUM simulations
+    'cpuct': 1.0,               # Keep standard exploration factor   
+    'dirichlet_alpha': 0.0,     # Set to 0 for eval
+    'dirichlet_epsilon': 0.0,   
+    'turns_until_tau0': 0,      # <<< Makes move selection greedy immediately (tau=0)
+    # Add eval_mode flag if get_best_action_and_pi supports it
+    'action_size': ACTION_SIZE,
+    'testing': True
 }
 
 # --- Self-Play Config (Minimal execution) ---

@@ -14,7 +14,7 @@ from config_types import (
     SelfPlayConfigType,
     MCTSConfigType,
 )
-from config import mcts_config_eval
+from config import mcts_config_eval, test_mcts_config_eval
 
 
 class Trainer:
@@ -479,13 +479,15 @@ class Trainer:
         while not game.is_game_over():
             current_player_idx = game.get_current_player()
             current_player_manager = players[current_player_idx]
-
+            eval_config = mcts_config_eval
+            if self.mcts_config["testing"]:
+                eval_config = test_mcts_config_eval
             try:
                 # Use a deterministic MCTS search for evaluation (no noise, greedy move selection)
                 # We might need a slightly different config or flag in get_best_action_and_pi
                 # For now, assume get_best_action_and_pi uses greedy selection when called here
                 best_action, _ = get_best_action_and_pi(
-                    game.clone(), current_player_manager, mcts_config_eval
+                    game.clone(), current_player_manager, eval_config
                 )
             except Exception as e:
                 print(
