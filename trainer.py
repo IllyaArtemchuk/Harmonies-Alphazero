@@ -40,10 +40,8 @@ class Trainer:
         self.training_config = training_config
 
         # Initialize or load the replay buffer
-        buffer_folder = self.self_play_config.get("replay_buffer_folder", "buffer")
-        buffer_file = self.self_play_config.get(
-            "replay_buffer_filename", "replay_buffer.pkl"
-        )
+        buffer_folder = self.self_play_config["replay_buffer_folder"]
+        buffer_file = self.self_play_config["replay_buffer_filename"]
         self.replay_buffer = load_buffer(
             max_size=self_play_config["replay_buffer_size"],
             folder=buffer_folder,
@@ -184,10 +182,8 @@ class Trainer:
     def execute_self_play_phase(self, data_generating_manager):
         """Runs multiple self-play games in paralell and adds data to the buffer."""
         num_games = self.self_play_config["num_games_per_iter"]
-        num_workers = self.self_play_config.get(
-            "num_parallel_games", max(1, cpu_count() - 1)
-        )
-        worker_device = self.self_play_config.get("worker_device", "cpu")
+        num_workers = self.self_play_config["num_parallel_games"]
+        worker_device = self.self_play_config["worker_device"]
         print(
             f"\n--- Starting Self-Play Phase ({num_games} games using\
             {num_workers} workers on device '{worker_device}') ---"
@@ -320,9 +316,7 @@ class Trainer:
         print("============================================")
 
         num_iterations = self.self_play_config["num_iterations"]
-        eval_frequency = self.self_play_config.get(
-            "eval_frequency", 10
-        )  # Evaluate every N iterations
+        eval_frequency = self.self_play_config["eval_frequency"]
 
         for iteration in range(num_iterations):
             print(
@@ -350,7 +344,7 @@ class Trainer:
             )
 
             # 4. Save replay buffer periodically (optional)
-            buffer_folder = self.self_play_config.get("replay_buffer_folder", "buffer")
+            buffer_folder = self.self_play_config["replay_buffer_folder"]
             if (iteration + 1) % 5 == 0:
                 save_buffer(self.replay_buffer, folder=buffer_folder)
 

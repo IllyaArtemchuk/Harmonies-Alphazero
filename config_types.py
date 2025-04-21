@@ -20,6 +20,7 @@ class TrainingConfigType(TypedDict):
     optimizer_type: str
     learning_rate: float
     weight_decay: float
+    momentum: float
     value_loss_weight: float
     policy_loss_weight: float
     batch_size: int
@@ -46,6 +47,9 @@ class SelfPlayConfigType(TypedDict):
     checkpoint_folder: str
     eval_episodes: int
     eval_win_rate_threshold: float
+    replay_buffer_folder: str
+    replay_buffer_filename: str
+    best_model_filename: str
     eval_frequency: int
     action_size: int
     num_hexes: int

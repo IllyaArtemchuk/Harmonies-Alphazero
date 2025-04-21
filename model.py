@@ -27,7 +27,7 @@ class ModelManager:
 
         self.learning_rate = training_config["learning_rate"]
 
-        if training_config.get("optimizer_type", "Adam") == "Adam":
+        if training_config["optimizer_type"] == "Adam":
             self.optimizer = optim.Adam(
                 self.model.parameters(),
                 lr=self.learning_rate,
@@ -37,7 +37,7 @@ class ModelManager:
             self.optimizer = optim.SGD(
                 self.model.parameters(),
                 lr=self.learning_rate,
-                momentum=training_config.get("momentum", 0.9),
+                momentum=training_config["momentum"]
             )
 
         self.value_loss_fn = nn.MSELoss()
