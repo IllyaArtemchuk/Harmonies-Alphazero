@@ -1,15 +1,16 @@
 import copy
 import time
+from pathlib import Path
 from multiprocessing import Pool, cpu_count
+import torch
 from tqdm import tqdm
 from model import ModelManager
 from harmonies_engine import HarmoniesGameState
 from process_game_state import create_state_tensors
 from MCTS import get_best_action_and_pi
-from buffer import *
+from buffer import load_buffer, save_buffer, ReplayBufferDataset
 from config_types import (
     TrainingConfigType,
-    ModelConfigType,
     SelfPlayConfigType,
     MCTSConfigType,
 )
@@ -183,53 +184,68 @@ class Trainer:
     def execute_self_play_phase(self, data_generating_manager):
         """Runs multiple self-play games in paralell and adds data to the buffer."""
         num_games = self.self_play_config["num_games_per_iter"]
-        num_workers = self.self_play_config.get("num_parallel_games", max(1, cpu_count() - 1))
+        num_workers = self.self_play_config.get(
+            "num_parallel_games", max(1, cpu_count() - 1)
+        )
         worker_device = self.self_play_config.get("worker_device", "cpu")
-        print(f"\n--- Starting Self-Play Phase ({num_games} games using\
-            {num_workers} workers on device '{worker_device}') ---")
+        print(
+            f"\n--- Starting Self-Play Phase ({num_games} games using\
+            {num_workers} workers on device '{worker_device}') ---"
+        )
         start_time = time.time()
         new_examples = 0
-        games_played = 0
+        games_completed = 0
 
         # Currently workers are CPU only, so model is set to cpu
         data_generating_manager.model.cpu()
         model_state_dict = data_generating_manager.model.state_dict()
         # Move model back to its original device if needed
         data_generating_manager.model.to(data_generating_manager.device)
-        
-        args_list = [(
-            copy.deepcopy(model_state_dict),
-            copy.deepcopy(self.model_manager.model_config), # Use candidate's config structure
-            copy.deepcopy(self.model_manager.training_config),# Use candidate's config structure
-            copy.deepcopy(self.mcts_config),
-            worker_device
-            ) for _ in range(num_games)]
+
+        args_list = [
+            (
+                copy.deepcopy(model_state_dict),
+                copy.deepcopy(
+                    self.model_manager.model_config
+                ),  # Use candidate's config structure
+                copy.deepcopy(
+                    self.model_manager.training_config
+                ),  # Use candidate's config structure
+                copy.deepcopy(self.mcts_config),
+                worker_device,
+            )
+            for _ in range(num_games)
+        ]
 
         # --- Run games in parallel ---
         collected_data = []
 
         try:
             # Using 'spawn' start method can be more robust on macOS/Windows than 'fork'
-            # import torch.multiprocessing as mp 
+            # import torch.multiprocessing as mp
             # mp.set_start_method('spawn', force=True) # Set this early in your main script if needed
-            
+
             with Pool(processes=num_workers) as pool:
                 # Use imap_unordered to get results as they finish, good for progress bars
                 # Wrap with tqdm for progress visualization
                 results_iterator = pool.imap_unordered(self_play_worker, args_list)
-                
-                for game_data in tqdm(results_iterator, total=num_games, desc=" Self-Play Games"):
-                    if game_data: # Check if worker returned valid data (not empty list)
+
+                for game_data in tqdm(
+                    results_iterator, total=num_games, desc=" Self-Play Games"
+                ):
+                    if (
+                        game_data
+                    ):  # Check if worker returned valid data (not empty list)
                         collected_data.extend(game_data)
                         new_examples += len(game_data)
                         games_completed += 1
                     # else: Game failed in worker, already printed error there
-            
+
             print("\n  Parallel pool finished.")
         except Exception as e:
-             print(f"FATAL ERROR during multiprocessing self-play: {e}")
-             # Consider how to handle this - maybe stop training?
-             # import traceback; traceback.print_exc()
+            print(f"FATAL ERROR during multiprocessing self-play: {e}")
+            # Consider how to handle this - maybe stop training?
+            # import traceback; traceback.print_exc()
 
         # Add collected data to the main replay buffer
         self.replay_buffer.extend(collected_data)
@@ -508,9 +524,7 @@ class Trainer:
             return -final_outcome
 
 
-def self_play_worker(
-    args
-):
+def self_play_worker(args):
     """
     Runs a single self-play game simulation in a worker process.
 

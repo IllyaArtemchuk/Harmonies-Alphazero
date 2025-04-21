@@ -322,7 +322,7 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
 
     # 3. Get Action Probabilities (pi_target) from Root Visit Counts
     root_edges = mcts.get_root_edges()
-    pi_target = np.zeros(mcts_config["action_size"])  # Use ACTION_SIZE from config
+    pi_target = np.zeros(mcts_config["action_size"], dtype=int)  # Use ACTION_SIZE from config
     visit_counts = []  # Store (action, visits) for choosing the move
     total_visits = 0
 

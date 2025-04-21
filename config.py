@@ -72,8 +72,8 @@ self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 2,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
     "epochs_per_iter": 1,  # Number of training epochs over the buffer per iteration
-    "num_parallel_games": 12, # Number of games that will run in parallel
-    "worker_device": "cpu", # Device used for the self play phase by the workers
+    "num_parallel_games": 12,  # Number of games that will run in parallel
+    "worker_device": "cpu",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
     "checkpoint_folder": "./harmonies_az_run/",  # Folder to save model checkpoints
     # --- Evaluation Settings (run periodically, e.g., after N iterations) ---
