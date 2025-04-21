@@ -40,12 +40,12 @@ training_config_default: TrainingConfigType = {
     "weight_decay": 0.0001,  # L2 regularization strength
     "value_loss_weight": 0.5,
     "policy_loss_weight": 0.5,
-    "batch_size": 4,
+    "batch_size": 64,
     # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 4,  # MCTS simulations per move
+    "num_simulations": 50,  # MCTS simulations per move
     "cpuct": 1.0,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
@@ -69,7 +69,7 @@ mcts_config_eval: MCTSConfigType = {
 }
 
 self_play_config_default: SelfPlayConfigType = {
-    "num_iterations": 2,  # Total number of self-play -> train iterations
+    "num_iterations": 100,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
     "epochs_per_iter": 1,  # Number of training epochs over the buffer per iteration
     "num_parallel_games": 12,  # Number of games that will run in parallel
@@ -85,3 +85,5 @@ self_play_config_default: SelfPlayConfigType = {
     "num_hexes": NUM_HEXES,
     "coordinate_to_index_map": coordinate_to_index_map,
 }
+
+
