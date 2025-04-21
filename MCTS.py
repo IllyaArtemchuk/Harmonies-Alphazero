@@ -10,7 +10,7 @@ import loggers as lg  # Your logging setup
 class Node:
     def __init__(self, state):
         self.state = state
-        self.player_turn = state.player_turn  # Whose turn it is IN THIS STATE
+        self.current_player = state.current_player  # Whose turn it is IN THIS STATE
         # Generate a unique ID for the state if it doesn't have one
         # This ID is crucial for the self.tree dictionary lookup in MCTS
         if not hasattr(state, "id") or state.id is None:
@@ -20,7 +20,7 @@ class Node:
         else:
             self.id = state.id
 
-        self.edges = {}  # Changed from list to dictionary {action: Edge}
+        self.edges = {}
 
     def is_leaf(self):
         # A node is a leaf if it has no outgoing edges (hasn't been expanded yet)
@@ -33,8 +33,8 @@ class Edge:
         # self.id = str(inNode.id) + '|' + str(outNode.id)
         self.in_node = in_node
         self.out_node = out_node
-        self.player_turn = (
-            in_node.player_turn
+        self.current_player = (
+            in_node.current_player
         )  # Player who took the action leading to outNode
         self.action = action  # The action taken (e.g., pile_idx or (tile_idx, coord))
 
@@ -47,7 +47,7 @@ class Edge:
 
 
 class MCTS:
-    def __init__(self, root_node, mcts_config):
+    def __init__(self, root_node, mcts_config: MCTSConfigType):
         """
         Initializes the MCTS search tree.
 
@@ -84,24 +84,24 @@ class MCTS:
             lg.logger_mcts.info(
                 "PLAYER TURN at node %s selection: %d",
                 current_node.id,
-                current_node.player_turn,
+                current_node.current_player,
             )
             max_qu = -float("inf")
             simulation_edge = None
             simulation_action = None
-
             # Add Dirichlet noise at the root for exploration
             if current_node == self.root:
                 epsilon = mcts_config_default["dirichlet_epsilon"]
                 nu = np.random.dirichlet(
-                    mcts_config_default["dirichlet_alpha"] * len(current_node.edges)
+                    [mcts_config_default["dirichlet_alpha"]] * len(current_node.edges)
                 )
             else:
                 epsilon = 0
+                print("trying me")
                 nu = [0] * len(
                     current_node.edges
                 )  # Placeholder, only used if epsilon > 0
-
+                print("did i fail?")
             # Calculate total visits Ns for the current node's outgoing edges
             ns = 0
             for (
@@ -227,12 +227,12 @@ class MCTS:
 
         # The value 'value_v' is from the perspective of the player whose turn it is at the leaf_node.
         # We need to adjust the sign when updating edges belonging to the *other* player.
-        player_at_leaf = leaf_node.player_turn
+        player_at_leaf = leaf_node.current_player
 
         for edge in reversed(breadcrumbs):  # Go backwards up the path
             # Determine if the value needs to be flipped for this edge's perspective
-            # player_turn on edge = player who *took the action* leading TO edge.out_node
-            if edge.player_turn == player_at_leaf:
+            # current_player on edge = player who *took the action* leading TO edge.out_node
+            if edge.current_player == player_at_leaf:
                 direction = (
                     1.0  # Value is from the perspective of the player who made the move
                 )
@@ -249,7 +249,7 @@ class MCTS:
             lg.logger_mcts.debug(
                 "Updating edge for action %s (player %d): N=%d, W=%.4f, Q=%.4f (value_for_edge=%.4f)",
                 edge.action,
-                edge.player_turn,
+                edge.current_player,
                 edge.stats["N"],
                 edge.stats["W"],
                 edge.stats["Q"],
@@ -263,7 +263,7 @@ class MCTS:
         return self.root.edges
 
 
-def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_config):
+def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigType):
     """
     Runs MCTS simulation to determine the best move from the current state.
 
@@ -279,8 +279,8 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_con
     """
     # 1. Initialize MCTS Tree for this specific move decision
     root_node = Node(game_state)
-    mcts = MCTS(root_node, mcts_config["cpuct"])  # Use cpuct from config
-
+    mcts = MCTS(root_node, mcts_config)
+    print("im here")
     # 2. Run MCTS Simulations
     for _ in range(mcts_config["num_simulations"]):  # Use MCTS_SIMS from config
         # --- Execute one simulation ---
@@ -303,14 +303,16 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_con
             # Game is over at the leaf, get the actual outcome
             outcome = leaf_node.state.get_game_outcome()  # Returns 1, -1, or 0
             # Value for backprop is the outcome from the perspective of the player AT THE LEAF NODE
-            value_v = float(outcome) if leaf_node.player_turn == 0 else -float(outcome)
+            value_v = (
+                float(outcome) if leaf_node.current_player == 0 else -float(outcome)
+            )
             if outcome == 0:
                 value_v = 0.0  # Handle draw explicitly
             lg.logger_mcts.info(
                 "Leaf node %s is terminal. Outcome = %.1f (perspective of player %d)",
                 leaf_node.id,
                 value_v,
-                leaf_node.player_turn,
+                leaf_node.current_player,
             )
 
         # c. Backpropagate the obtained value

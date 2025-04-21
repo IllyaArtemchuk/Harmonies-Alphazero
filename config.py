@@ -7,9 +7,15 @@ from constants import (
     coordinate_to_index_map,
     NUM_HEXES,
 )
+from config_types import (
+    TrainingConfigType,
+    ModelConfigType,
+    MCTSConfigType,
+    SelfPlayConfigType,
+)
 
 
-model_config_default = {
+model_config_default: ModelConfigType = {
     # Parameters defining the NN architecture passed to AlphaZeroModel.__init__
     "input_channels": INPUT_CHANNELS,  # Channels from create_board_tensor (e.g., 38)
     "cnn_filters": 75,  # Filters in conv/residual blocks (CNN_FILTERS)
@@ -22,9 +28,13 @@ model_config_default = {
     "value_head_conv_filters": 1,  # Filters in the value head's initial 1x1 conv
 }
 
-training_config_default = {
+training_config_default: TrainingConfigType = {
     # Parameters controlling the training optimization process passed to ModelManager.__init__
-    "device": "cuda" if torch.cuda.is_available() else "cpu",
+    "device": (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available() else "cpu"
+    ),
     "optimizer_type": "Adam",
     "learning_rate": 0.001,
     "weight_decay": 0.0001,  # L2 regularization strength
@@ -34,7 +44,7 @@ training_config_default = {
     # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
 }
 
-mcts_config_default = {
+mcts_config_default: MCTSConfigType = {
     "num_simulations": 4,  # MCTS simulations per move
     "cpuct": 1.0,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
@@ -46,7 +56,7 @@ mcts_config_default = {
     "action_size": model_config_default["action_size"],
 }
 
-mcts_config_eval = {
+mcts_config_eval: MCTSConfigType = {
     "num_simulations": 50,  # MCTS simulations per move
     "cpuct": 1.0,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
@@ -58,7 +68,7 @@ mcts_config_eval = {
     "action_size": model_config_default["action_size"],
 }
 
-self_play_config_default = {
+self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 2,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
     "epochs_per_iter": 1,  # Number of training epochs over the buffer per iteration

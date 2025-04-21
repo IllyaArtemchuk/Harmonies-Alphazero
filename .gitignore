@@ -1,0 +1,6 @@
+.*
+!.gitignore
+launch.json
+run
+harmonies_az_run
+__pycache__

@@ -1,15 +1,27 @@
 import copy
 import time
 from model import ModelManager
-from config import *
 from harmonies_engine import HarmoniesGameState
 from process_game_state import create_state_tensors
 from MCTS import get_best_action_and_pi
 from buffer import *
+from config_types import (
+    TrainingConfigType,
+    ModelConfigType,
+    SelfPlayConfigType,
+    MCTSConfigType,
+)
+from config import mcts_config_eval
 
 
 class Trainer:
-    def __init__(self, model_manager, mcts_config, self_play_config, training_config):
+    def __init__(
+        self,
+        model_manager,
+        mcts_config: MCTSConfigType,
+        self_play_config: SelfPlayConfigType,
+        training_config: TrainingConfigType,
+    ):
         """
         Initializes the AlphaZero Trainer.
 
@@ -81,12 +93,10 @@ class Trainer:
 
             # --- Run MCTS Search ---
             try:
-                # Pass the current game state (clone is good practice), model_manager, and configs
                 best_action, pi_target = get_best_action_and_pi(
                     game.clone(),  # Pass a clone for safety during search
                     model_manager,
                     self.mcts_config,
-                    self.self_play_config,
                 )
             except Exception as e:
                 print(
@@ -138,12 +148,12 @@ class Trainer:
                 "state_rep"
             ]  # Unpack the stored state representation
             pi_target_np = history_entry["pi"]
-            player_turn = history_entry["player"]
+            current_player = history_entry["player"]
 
-            # Determine outcome z from the perspective of player_turn
+            # Determine outcome z from the perspective of current_player
             if final_outcome == 0:  # Draw
                 outcome_perspective = 0.0
-            elif player_turn == 0:  # It was Player 0's turn
+            elif current_player == 0:  # It was Player 0's turn
                 outcome_perspective = float(
                     final_outcome
                 )  # 1.0 if P0 won, -1.0 if P1 won
@@ -386,7 +396,7 @@ class Trainer:
                 folder=checkpoint_folder, filename=self.best_model_filename
             )
             # Update the best_model_manager in memory to match
-            self.best_model_manager.load_checkpoint(
+            self.best_model_manager.load_checkpoint(  # type: ignore
                 folder=checkpoint_folder, filename=self.best_model_filename
             )
             print("  Best model updated.")
@@ -429,10 +439,7 @@ class Trainer:
                 # We might need a slightly different config or flag in get_best_action_and_pi
                 # For now, assume get_best_action_and_pi uses greedy selection when called here
                 best_action, _ = get_best_action_and_pi(
-                    game.clone(),
-                    current_player_manager,
-                    mcts_config_eval,
-                    self.self_play_config,  # Use main config, but MCTS should be deterministic
+                    game.clone(), current_player_manager, mcts_config_eval
                 )
             except Exception as e:
                 print(
@@ -464,31 +471,114 @@ class Trainer:
         else:  # Candidate played as P1
             return -final_outcome
 
-    # --- Placeholder for Evaluation ---
-    # def evaluate_model(self):
-    #     print("\n--- Starting Evaluation Phase ---")
-    #     # Load best model weights if necessary
-    #     # Play N games (e.g., self_play_config['eval_episodes'])
-    #     # between self.model_manager and self.best_model_manager
-    #     # Track win rate
-    #     # If self.model_manager wins > threshold (e.g., 0.55),
-    #     # update self.best_model_manager weights and save as 'best_model.pth.tar'
-    #     pass
 
+def self_play_worker(
+    model_state_dict,
+    model_config: ModelConfigType,
+    training_config: TrainingConfigType,
+    mcts_config: MCTSConfigType,
+    device,
+):
+    """
+    Runs a single self-play game simulation in a worker process.
 
-# # ============================================
-# # Example Main Script Execution
-# # ============================================
-# if __name__ == '__main__':
-#     # Import your configurations
-#     from config import model_config, training_config, mcts_config, self_play_config
+    Args:
+            model_state_dict (dict): State dictionary of the NN weights.
+            model_config (dict): Configuration for the AlphaZeroModel.
+            training_config (dict): Training configuration (needed for ModelManager init).
+            mcts_config (dict): Configuration for MCTS.
+            device (str): 'cpu' or 'cuda'/'mps' - device for this worker's model.
+    Returns:
+        list: Collected training data [(board_t, global_t, pi_t, z_t)] or empty list on error.
+    """
 
-#     # Initialize components
-#     model_mgr = ModelManager(model_config, training_config)
+    # --- 1. Create local ModelManager and load weights ---
+    try:
+        # Modify training_config for the worker if needed (e.g., force CPU)
+        worker_training_config = training_config.copy()
+        worker_training_config["device"] = device
 
-#     # Optionally load the very first checkpoint if continuing a run
-#     # model_mgr.load_checkpoint(folder=self_play_config['checkpoint_folder'])
+        local_model_manager = ModelManager(model_config, worker_training_config)
+        local_model_manager.model.load_state_dict(model_state_dict)
+        local_model_manager.model.eval()  # Ensure model is in eval mode
+        # print(f"Worker {os.getpid()} created model on {device}") # Debug print
+    except Exception as e:
+        print(f"WORKER ERROR: Failed to initialize model: {e}")
+        return []  # Return empty on failure
 
-#     # Create and run the trainer
-#     trainer = Trainer(model_mgr, mcts_config, self_play_config, training_config)
-#     trainer.run_training_loop()
+    # --- 2. Simulate one game ---
+    game = HarmoniesGameState()
+    game_history = []
+
+    while not game.is_game_over():
+        current_player_idx = game.get_current_player()
+
+        try:
+            # Use the local model manager for predictions
+            state_tensors = create_state_tensors(game)
+            state_tensors = tuple(
+                item.float() for item in state_tensors
+            )  # Ensure Float
+            state_representation = state_tensors  # Store the tuple
+
+            best_action, pi_target = get_best_action_and_pi(
+                game.clone(), local_model_manager, mcts_config  # Use the local manager
+            )
+        except Exception as e:
+            print(f"WORKER ERROR: Exception during MCTS: {e}\nState:\n{game}")
+            # Consider logging traceback for detailed debugging: import traceback; traceback.print_exc()
+            return []
+
+        if best_action is None:
+            print(
+                f"WORKER WARNING: MCTS failed for player {current_player_idx}. Aborting game.\nState:\n{game}"
+            )
+            return []
+
+        game_history.append(
+            {
+                "state_rep": state_representation,
+                "player": current_player_idx,
+                "pi": pi_target,
+            }
+        )
+
+        try:
+            game = game.apply_move(best_action)
+        except Exception as e:
+            print(
+                f"WORKER ERROR: Exception during apply_move: {e}. Aborting game.\nAction: {best_action}"
+            )
+            return []
+
+    final_outcome = game.get_game_outcome()
+    if final_outcome is None:
+        print("WORKER ERROR: Game ended but outcome is None!")
+        return []
+
+    # --- 3. Process Game History ---
+    training_data = []
+    for history_entry in game_history:
+        s_board, s_global = history_entry["state_rep"]
+        pi_target_np = history_entry["pi"]
+        player_turn = history_entry["player"]
+
+        if final_outcome == 0:
+            outcome_perspective = 0.0
+        elif player_turn == 0:
+            outcome_perspective = float(final_outcome)
+        else:
+            outcome_perspective = -float(final_outcome)
+
+        # Keep data as tensors for consistency, DataLoader prefers tensors
+        training_data.append(
+            (
+                s_board,
+                s_global,
+                torch.tensor(pi_target_np, dtype=torch.float),
+                torch.tensor([outcome_perspective], dtype=torch.float),
+            )
+        )
+
+    # print(f"Worker {os.getpid()} finished game with {len(training_data)} examples.") # Debug print
+    return training_data

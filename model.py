@@ -1,10 +1,13 @@
 import torch
 from torch import optim, nn
 from pathlib import Path  # Optional, for cleaner path handling
+from config_types import TrainingConfigType, ModelConfigType
 
 
 class ModelManager:
-    def __init__(self, training_config, model_config):
+    def __init__(
+        self, model_config: ModelConfigType, training_config: TrainingConfigType
+    ):
         self.model_config = model_config
         self.training_config = training_config
         self.device = torch.device(training_config["device"])
