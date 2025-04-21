@@ -1,5 +1,7 @@
 import copy
 import time
+from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 from model import ModelManager
 from harmonies_engine import HarmoniesGameState
 from process_game_state import create_state_tensors
@@ -56,151 +58,185 @@ class Trainer:
         )
         self._initialize_best_model()  # Load or initialize the best model
 
-    def run_self_play_game(self, model_manager):
-        """
-        Plays one full game using AlphaZero MCTS and collects training examples.
+    # def run_self_play_game(self, model_manager):
+    #     """
+    #     Plays one full game using AlphaZero MCTS and collects training examples.
 
-        Args:
-            model_manager: The ModelManager instance.
-        Returns:
-            list: A list of training examples for this game, where each example is a tuple:
-                (board_tensor, global_features_tensor, pi_target_tensor, outcome_perspective_tensor).
-                Returns empty list if a significant error occurs during the game.
-        """
-        game = HarmoniesGameState()  # Start new game
-        # Store history entries as dictionaries for clarity
-        game_history = (
-            []
-        )  # Stores {'board_rep': tensor, 'global_rep': tensor, 'player': int, 'pi': ndarray}
+    #     Args:
+    #         model_manager: The ModelManager instance.
+    #     Returns:
+    #         list: A list of training examples for this game, where each example is a tuple:
+    #             (board_tensor, global_features_tensor, pi_target_tensor, outcome_perspective_tensor).
+    #             Returns empty list if a significant error occurs during the game.
+    #     """
+    #     game = HarmoniesGameState()  # Start new game
+    #     # Store history entries as dictionaries for clarity
+    #     game_history = (
+    #         []
+    #     )  # Stores {'board_rep': tensor, 'global_rep': tensor, 'player': int, 'pi': ndarray}
 
-        while not game.is_game_over():
-            current_player_idx = (
-                game.get_current_player()
-            )  # Get the player index (0 or 1)
+    #     while not game.is_game_over():
+    #         current_player_idx = (
+    #             game.get_current_player()
+    #         )  # Get the player index (0 or 1)
 
-            # --- Generate NN Inputs (State Representation) ---
-            # Calculate these BEFORE the MCTS search for the current state
-            try:
-                state_tensors = create_state_tensors(game)
-                state_tensors = tuple(
-                    item.float() for item in state_tensors
-                )  # Ensure Float
+    #         # --- Generate NN Inputs (State Representation) ---
+    #         # Calculate these BEFORE the MCTS search for the current state
+    #         try:
+    #             state_tensors = create_state_tensors(game)
+    #             state_tensors = tuple(
+    #                 item.float() for item in state_tensors
+    #             )  # Ensure Float
 
-            except Exception as e:
-                print(f"ERROR: Failed to generate state representation for NN: {e}")
-                print(f"State:\n{game}")
-                return []  # Abort game if representation fails
+    #         except Exception as e:
+    #             print(f"ERROR: Failed to generate state representation for NN: {e}")
+    #             print(f"State:\n{game}")
+    #             return []  # Abort game if representation fails
 
-            # --- Run MCTS Search ---
-            try:
-                best_action, pi_target = get_best_action_and_pi(
-                    game.clone(),  # Pass a clone for safety during search
-                    model_manager,
-                    self.mcts_config,
-                )
-            except Exception as e:
-                print(
-                    f"ERROR: Exception during MCTS search (get_best_action_and_pi): {e}"
-                )
-                print(f"State:\n{game}")
-                return []  # Abort game
+    #         # --- Run MCTS Search ---
+    #         try:
+    #             best_action, pi_target = get_best_action_and_pi(
+    #                 game.clone(),  # Pass a clone for safety during search
+    #                 model_manager,
+    #                 self.mcts_config,
+    #             )
+    #         except Exception as e:
+    #             print(
+    #                 f"ERROR: Exception during MCTS search (get_best_action_and_pi): {e}"
+    #             )
+    #             print(f"State:\n{game}")
+    #             return []  # Abort game
 
-            # --- Handle MCTS Failure ---
-            if best_action is None:
-                print(
-                    f"WARNING: MCTS failed to return a valid action for player {current_player_idx}. Aborting game."
-                )
-                print(f"State:\n{game}")
-                # Return empty list as this game's data might be unreliable
-                return []
+    #         # --- Handle MCTS Failure ---
+    #         if best_action is None:
+    #             print(
+    #                 f"WARNING: MCTS failed to return a valid action for player {current_player_idx}. Aborting game."
+    #             )
+    #             print(f"State:\n{game}")
+    #             # Return empty list as this game's data might be unreliable
+    #             return []
 
-            # --- Store History (BEFORE applying move) ---
-            # Store the NN inputs, the player, and the MCTS policy result
-            game_history.append(
-                {
-                    "state_rep": state_tensors,  # Store the tuple (board_tensor, global_features)
-                    "player": current_player_idx,
-                    "pi": pi_target,  # pi_target should be a numpy array from MCTS
-                }
-            )
+    #         # --- Store History (BEFORE applying move) ---
+    #         # Store the NN inputs, the player, and the MCTS policy result
+    #         game_history.append(
+    #             {
+    #                 "state_rep": state_tensors,  # Store the tuple (board_tensor, global_features)
+    #                 "player": current_player_idx,
+    #                 "pi": pi_target,  # pi_target should be a numpy array from MCTS
+    #             }
+    #         )
 
-            # --- Apply Move ---
-            try:
-                game = game.apply_move(best_action)
-            except Exception as e:
-                print(f"ERROR: Exception during game.apply_move: {e}. Aborting game.")
-                # Log state *before* the failed move
-                # (Access state from the last 'state_representation' or re-generate if needed)
-                print(f"Action attempted: {best_action}")
-                return []  # Return empty list for this failed game
+    #         # --- Apply Move ---
+    #         try:
+    #             game = game.apply_move(best_action)
+    #         except Exception as e:
+    #             print(f"ERROR: Exception during game.apply_move: {e}. Aborting game.")
+    #             # Log state *before* the failed move
+    #             # (Access state from the last 'state_representation' or re-generate if needed)
+    #             print(f"Action attempted: {best_action}")
+    #             return []  # Return empty list for this failed game
 
-        # Game over
-        final_outcome = game.get_game_outcome()
+    #     # Game over
+    #     final_outcome = game.get_game_outcome()
 
-        if final_outcome is None:  # Should not happen if game_is_over is true
-            print("ERROR: Game ended but get_game_outcome returned None!")
-            return []
+    #     if final_outcome is None:  # Should not happen if game_is_over is true
+    #         print("ERROR: Game ended but get_game_outcome returned None!")
+    #         return []
 
-        # --- Process Game History into Final Training Data ---
-        training_data = []
-        for history_entry in game_history:
-            s_board, s_global = history_entry[
-                "state_rep"
-            ]  # Unpack the stored state representation
-            pi_target_np = history_entry["pi"]
-            current_player = history_entry["player"]
+    #     # --- Process Game History into Final Training Data ---
+    #     training_data = []
+    #     for history_entry in game_history:
+    #         s_board, s_global = history_entry[
+    #             "state_rep"
+    #         ]  # Unpack the stored state representation
+    #         pi_target_np = history_entry["pi"]
+    #         current_player = history_entry["player"]
 
-            # Determine outcome z from the perspective of current_player
-            if final_outcome == 0:  # Draw
-                outcome_perspective = 0.0
-            elif current_player == 0:  # It was Player 0's turn
-                outcome_perspective = float(
-                    final_outcome
-                )  # 1.0 if P0 won, -1.0 if P1 won
-            else:  # It was Player 1's turn
-                outcome_perspective = -float(
-                    final_outcome
-                )  # -1.0 if P0 won, 1.0 if P1 won
+    #         # Determine outcome z from the perspective of current_player
+    #         if final_outcome == 0:  # Draw
+    #             outcome_perspective = 0.0
+    #         elif current_player == 0:  # It was Player 0's turn
+    #             outcome_perspective = float(
+    #                 final_outcome
+    #             )  # 1.0 if P0 won, -1.0 if P1 won
+    #         else:  # It was Player 1's turn
+    #             outcome_perspective = -float(
+    #                 final_outcome
+    #             )  # -1.0 if P0 won, 1.0 if P1 won
 
-            # Append final training tuple, converting numpy pi and scalar outcome to tensors
-            training_data.append(
-                (
-                    s_board,  # Already a tensor
-                    s_global,  # Already a tensor
-                    torch.tensor(
-                        pi_target_np, dtype=torch.float
-                    ),  # Convert pi numpy array to tensor
-                    torch.tensor(
-                        [outcome_perspective], dtype=torch.float
-                    ),  # Outcome as single-element tensor
-                )
-            )
+    #         # Append final training tuple, converting numpy pi and scalar outcome to tensors
+    #         training_data.append(
+    #             (
+    #                 s_board,  # Already a tensor
+    #                 s_global,  # Already a tensor
+    #                 torch.tensor(
+    #                     pi_target_np, dtype=torch.float
+    #                 ),  # Convert pi numpy array to tensor
+    #                 torch.tensor(
+    #                     [outcome_perspective], dtype=torch.float
+    #                 ),  # Outcome as single-element tensor
+    #             )
+    #         )
 
-        return training_data
+    #     return training_data
 
     def execute_self_play_phase(self, data_generating_manager):
-        """Runs multiple self-play games and adds data to the buffer."""
+        """Runs multiple self-play games in paralell and adds data to the buffer."""
         num_games = self.self_play_config["num_games_per_iter"]
-        print(f"\n--- Starting Self-Play Phase ({num_games} games) ---")
+        num_workers = self.self_play_config.get("num_parallel_games", max(1, cpu_count() - 1))
+        worker_device = self.self_play_config.get("worker_device", "cpu")
+        print(f"\n--- Starting Self-Play Phase ({num_games} games using\
+            {num_workers} workers on device '{worker_device}') ---")
         start_time = time.time()
         new_examples = 0
         games_played = 0
 
-        # TODO: Consider parallelization here using multiprocessing.Pool
-        # For simplicity, running sequentially first:
-        for i in range(num_games):
-            print(f"  Playing game {i+1}/{num_games}...")
-            game_data = self.run_self_play_game(data_generating_manager)
-            if game_data:  # Only add data if game completed successfully
-                self.replay_buffer.extend(game_data)
-                new_examples += len(game_data)
-                games_played += 1
-            else:
-                print(f"  Game {i+1} aborted due to error.")
+        # Currently workers are CPU only, so model is set to cpu
+        data_generating_manager.model.cpu()
+        model_state_dict = data_generating_manager.model.state_dict()
+        # Move model back to its original device if needed
+        data_generating_manager.model.to(data_generating_manager.device)
+        
+        args_list = [(
+            copy.deepcopy(model_state_dict),
+            copy.deepcopy(self.model_manager.model_config), # Use candidate's config structure
+            copy.deepcopy(self.model_manager.training_config),# Use candidate's config structure
+            copy.deepcopy(self.mcts_config),
+            worker_device
+            ) for _ in range(num_games)]
+
+        # --- Run games in parallel ---
+        collected_data = []
+
+        try:
+            # Using 'spawn' start method can be more robust on macOS/Windows than 'fork'
+            # import torch.multiprocessing as mp 
+            # mp.set_start_method('spawn', force=True) # Set this early in your main script if needed
+            
+            with Pool(processes=num_workers) as pool:
+                # Use imap_unordered to get results as they finish, good for progress bars
+                # Wrap with tqdm for progress visualization
+                results_iterator = pool.imap_unordered(self_play_worker, args_list)
+                
+                for game_data in tqdm(results_iterator, total=num_games, desc=" Self-Play Games"):
+                    if game_data: # Check if worker returned valid data (not empty list)
+                        collected_data.extend(game_data)
+                        new_examples += len(game_data)
+                        games_completed += 1
+                    # else: Game failed in worker, already printed error there
+            
+            print("\n  Parallel pool finished.")
+        except Exception as e:
+             print(f"FATAL ERROR during multiprocessing self-play: {e}")
+             # Consider how to handle this - maybe stop training?
+             # import traceback; traceback.print_exc()
+
+        # Add collected data to the main replay buffer
+        self.replay_buffer.extend(collected_data)
 
         end_time = time.time()
         print("--- Self-Play Finished ---")
-        print(f"  Completed {games_played}/{num_games} games.")
+        print(f"  Completed {games_completed}/{num_games} games.")
         print(f"  Added {new_examples} examples.")
         print(f"  Buffer size: {len(self.replay_buffer)} / {self.replay_buffer.maxlen}")
         print(f"  Time taken: {end_time - start_time:.2f} seconds")
@@ -473,11 +509,7 @@ class Trainer:
 
 
 def self_play_worker(
-    model_state_dict,
-    model_config: ModelConfigType,
-    training_config: TrainingConfigType,
-    mcts_config: MCTSConfigType,
-    device,
+    args
 ):
     """
     Runs a single self-play game simulation in a worker process.
@@ -487,16 +519,17 @@ def self_play_worker(
             model_config (dict): Configuration for the AlphaZeroModel.
             training_config (dict): Training configuration (needed for ModelManager init).
             mcts_config (dict): Configuration for MCTS.
-            device (str): 'cpu' or 'cuda'/'mps' - device for this worker's model.
+            worker_device (str): 'cpu' or 'cuda'/'mps' - device for this worker's model.
     Returns:
         list: Collected training data [(board_t, global_t, pi_t, z_t)] or empty list on error.
     """
+    model_state_dict, model_config, training_config, mcts_config, worker_device = args
 
     # --- 1. Create local ModelManager and load weights ---
     try:
         # Modify training_config for the worker if needed (e.g., force CPU)
         worker_training_config = training_config.copy()
-        worker_training_config["device"] = device
+        worker_training_config["device"] = worker_device
 
         local_model_manager = ModelManager(model_config, worker_training_config)
         local_model_manager.model.load_state_dict(model_state_dict)

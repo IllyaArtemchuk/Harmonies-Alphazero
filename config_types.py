@@ -39,8 +39,10 @@ class MCTSConfigType(TypedDict):
 class SelfPlayConfigType(TypedDict):
     num_iterations: int
     num_games_per_iter: int
+    num_parallel_games: int
     epochs_per_iter: int
     replay_buffer_size: int
+    worker_device: str
     checkpoint_folder: str
     eval_episodes: int
     eval_win_rate_threshold: float
