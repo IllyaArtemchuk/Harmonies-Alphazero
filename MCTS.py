@@ -10,7 +10,7 @@ import loggers as lg  # Your logging setup
 class Node:
     def __init__(self, state):
         self.state = state
-        self.playerTurn = state.playerTurn  # Whose turn it is IN THIS STATE
+        self.player_turn = state.playerTurn  # Whose turn it is IN THIS STATE
         # Generate a unique ID for the state if it doesn't have one
         # This ID is crucial for the self.tree dictionary lookup in MCTS
         if not hasattr(state, "id") or state.id is None:
@@ -28,13 +28,13 @@ class Node:
 
 
 class Edge:
-    def __init__(self, inNode, outNode, prior, action):
+    def __init__(self, in_node, out_node, prior, action):
         # ID might be less critical now if we don't store edges separately
         # self.id = str(inNode.id) + '|' + str(outNode.id)
-        self.inNode = inNode
-        self.outNode = outNode
-        self.playerTurn = (
-            inNode.playerTurn
+        self.in_node = in_node
+        self.out_node = out_node
+        self.player_turn = (
+            in_node.player_turn
         )  # Player who took the action leading to outNode
         self.action = action  # The action taken (e.g., pile_idx or (tile_idx, coord))
 
@@ -92,9 +92,9 @@ class MCTS:
 
             # Add Dirichlet noise at the root for exploration
             if currentNode == self.root:
-                epsilon = mcts_config["dirichlet_epsilon"]
+                epsilon = mcts_config_default["dirichlet_epsilon"]
                 nu = np.random.dirichlet(
-                    mcts_config["dirichlet_alpha"] * len(currentNode.edges)
+                    mcts_config_default["dirichlet_alpha"] * len(currentNode.edges)
                 )
             else:
                 epsilon = 0
@@ -263,7 +263,7 @@ class MCTS:
         return self.root.edges
 
 
-def get_best_action_and_pi(game_state, model_manager, mcts_config):
+def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_config):
     """
     Runs MCTS simulation to determine the best move from the current state.
 
@@ -303,14 +303,14 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config):
             # Game is over at the leaf, get the actual outcome
             outcome = leaf_node.state.get_game_outcome()  # Returns 1, -1, or 0
             # Value for backprop is the outcome from the perspective of the player AT THE LEAF NODE
-            value_v = float(outcome) if leaf_node.playerTurn == 0 else -float(outcome)
+            value_v = float(outcome) if leaf_node.player_turn == 0 else -float(outcome)
             if outcome == 0:
                 value_v = 0.0  # Handle draw explicitly
             lg.logger_mcts.info(
                 "Leaf node %s is terminal. Outcome = %.1f (perspective of player %d)",
                 leaf_node.id,
                 value_v,
-                leaf_node.playerTurn,
+                leaf_node.player_turn,
             )
 
         # c. Backpropagate the obtained value

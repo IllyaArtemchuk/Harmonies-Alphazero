@@ -189,7 +189,7 @@ class Trainer:
                 print(f"  Game {i+1} aborted due to error.")
 
         end_time = time.time()
-        print(f"--- Self-Play Finished ---")
+        print("--- Self-Play Finished ---")
         print(f"  Completed {games_played}/{num_games} games.")
         print(f"  Added {new_examples} examples.")
         print(f"  Buffer size: {len(self.replay_buffer)} / {self.replay_buffer.maxlen}")
@@ -237,13 +237,14 @@ class Trainer:
                 batches_processed += 1
 
         end_time = time.time()
-        print(f"--- Training Finished ---")
+        print("--- Training Finished ---")
         if batches_processed > 0:
             avg_total_loss = total_loss_accum / batches_processed
             avg_policy_loss = policy_loss_accum / batches_processed
             avg_value_loss = value_loss_accum / batches_processed
             print(
-                f"  Avg Loss: {avg_total_loss:.4f} (Policy: {avg_policy_loss:.4f}, Value: {avg_value_loss:.4f})"
+                f"  Avg Loss: {avg_total_loss:.4f} (Policy: {avg_policy_loss:.4f},\
+                    Value: {avg_value_loss:.4f})"
             )
             print(f"  Batches processed: {batches_processed}")
         else:
@@ -346,7 +347,8 @@ class Trainer:
         for i in range(num_eval_games):
             first_player = i % 2  # Alternate starting player (0=candidate, 1=best)
             print(
-                f"  Playing evaluation game {i+1}/{num_eval_games} (Candidate plays as P{first_player})..."
+                f"  Playing evaluation game {i+1}/{num_eval_games}\
+                (Candidate plays as P{first_player})..."
             )
 
             outcome = self.play_one_eval_game(
@@ -429,7 +431,7 @@ class Trainer:
                 best_action, _ = get_best_action_and_pi(
                     game.clone(),
                     current_player_manager,
-                    eval_mcts_config,
+                    mcts_config_eval,
                     self.self_play_config,  # Use main config, but MCTS should be deterministic
                 )
             except Exception as e:

@@ -1,7 +1,7 @@
-import pickle
-import torch
 from collections import deque
 from pathlib import Path
+import pickle
+import torch
 
 
 def save_buffer(buffer, folder="buffer", filename="replay_buffer.pkl"):
