@@ -10,7 +10,7 @@ import loggers as lg  # Your logging setup
 class Node:
     def __init__(self, state):
         self.state = state
-        self.player_turn = state.playerTurn  # Whose turn it is IN THIS STATE
+        self.player_turn = state.player_turn  # Whose turn it is IN THIS STATE
         # Generate a unique ID for the state if it doesn't have one
         # This ID is crucial for the self.tree dictionary lookup in MCTS
         if not hasattr(state, "id") or state.id is None:
@@ -22,7 +22,7 @@ class Node:
 
         self.edges = {}  # Changed from list to dictionary {action: Edge}
 
-    def isLeaf(self):
+    def is_leaf(self):
         # A node is a leaf if it has no outgoing edges (hasn't been expanded yet)
         return len(self.edges) == 0
 
@@ -58,16 +58,16 @@ class MCTS:
         self.root = root_node
         self.tree = {}  # Stores all nodes encountered in this search {node.id: Node}
         self.cpuct = mcts_config["cpuct"]
-        self.addNode(root_node)  # Add root node to the tree dictionary
+        self.add_node(root_node)  # Add root node to the tree dictionary
 
     def __len__(self):
         return len(self.tree)
 
-    def addNode(self, node):
+    def add_node(self, node):
         # Add node to the tree dictionary using its unique ID
         self.tree[node.id] = node
 
-    def moveToLeaf(self):
+    def move_to_leaf(self):
         """
         Traverses the tree from the root node to a leaf node using the PUCT formula.
 
@@ -78,78 +78,78 @@ class MCTS:
         """
         lg.logger_mcts.info("------MOVING TO LEAF------")
         breadcrumbs = []
-        currentNode = self.root
+        current_node = self.root
 
-        while not currentNode.isLeaf():
+        while not current_node.is_leaf():
             lg.logger_mcts.info(
                 "PLAYER TURN at node %s selection: %d",
-                currentNode.id,
-                currentNode.playerTurn,
+                current_node.id,
+                current_node.player_turn,
             )
-            maxQU = -float("inf")
-            simulationEdge = None
-            simulationAction = None
+            max_qu = -float("inf")
+            simulation_edge = None
+            simulation_action = None
 
             # Add Dirichlet noise at the root for exploration
-            if currentNode == self.root:
+            if current_node == self.root:
                 epsilon = mcts_config_default["dirichlet_epsilon"]
                 nu = np.random.dirichlet(
-                    mcts_config_default["dirichlet_alpha"] * len(currentNode.edges)
+                    mcts_config_default["dirichlet_alpha"] * len(current_node.edges)
                 )
             else:
                 epsilon = 0
                 nu = [0] * len(
-                    currentNode.edges
+                    current_node.edges
                 )  # Placeholder, only used if epsilon > 0
 
             # Calculate total visits Ns for the current node's outgoing edges
-            Ns = 0
+            ns = 0
             for (
                 edge
-            ) in currentNode.edges.values():  # Iterate through Edge objects in dict
-                Ns += edge.stats["N"]
+            ) in current_node.edges.values():  # Iterate through Edge objects in dict
+                ns += edge.stats["N"]
 
             # Select the edge with the highest PUCT score
             # Use items() to get action and edge, enumerate for nu index
-            for idx, (action, edge) in enumerate(currentNode.edges.items()):
+            for idx, (action, edge) in enumerate(current_node.edges.items()):
                 # PUCT calculation
-                U = (
+                u = (
                     self.cpuct
                     * ((1 - epsilon) * edge.stats["P"] + epsilon * nu[idx])
-                    * np.sqrt(Ns)
+                    * np.sqrt(ns)
                     / (1 + edge.stats["N"])
                 )
-                Q = edge.stats["Q"]
+                q = edge.stats["Q"]
 
                 # --- Optional: Log PUCT details ---
                 # lg.logger_mcts.info(...)
 
-                if Q + U > maxQU:
-                    maxQU = Q + U
-                    simulationAction = action  # Store the action itself
-                    simulationEdge = edge  # Store the edge object
+                if q + u > max_qu:
+                    max_qu = q + u
+                    simulation_action = action  # Store the action itself
+                    simulation_edge = edge  # Store the edge object
 
-            if simulationEdge is None:
+            if simulation_edge is None:
                 # This should not happen if a node is not a leaf (must have edges)
                 # unless maybe all priors P were zero? Handle robustly.
                 lg.logger_mcts.error(
                     "MCTS Selection failed: Node %s is not leaf but no edge selected.",
-                    currentNode.id,
+                    current_node.id,
                 )
                 # Handle error: maybe break, maybe choose randomly? For now, let's raise.
-                raise Exception(f"MCTS Selection Failure at Node {currentNode.id}")
+                raise Exception(f"MCTS Selection Failure at Node {current_node.id}")
 
             lg.logger_mcts.info(
-                "Selected action %s with Q+U %.4f", simulationAction, maxQU
+                "Selected action %s with Q+U %.4f", simulation_action, max_qu
             )
 
             # Move to the next node based on the selected edge
-            currentNode = simulationEdge.outNode
-            breadcrumbs.append(simulationEdge)  # Add the edge taken to the path
+            current_node = simulation_edge.out_node
+            breadcrumbs.append(simulation_edge)  # Add the edge taken to the path
 
-        lg.logger_mcts.info("Reached leaf node %s", currentNode.id)
+        lg.logger_mcts.info("Reached leaf node %s", current_node.id)
         # Return the leaf node found and the path taken
-        return currentNode, breadcrumbs
+        return current_node, breadcrumbs
 
     def expand_leaf(self, leaf_node, policy_p):
         """
@@ -194,7 +194,7 @@ class MCTS:
             else:
                 # Create a new node for the child state
                 child_node = Node(next_state)
-                self.addNode(child_node)  # Add the new node to the tree dictionary
+                self.add_node(child_node)  # Add the new node to the tree dictionary
                 lg.logger_mcts.debug(
                     "Created new child node %s (state %s).",
                     child_node.id,
@@ -210,7 +210,7 @@ class MCTS:
                 "Added edge for action %s with prior P=%.4f", move, prior_p
             )
 
-    def backFill(self, leaf_node, value_v, breadcrumbs):
+    def back_fill(self, leaf_node, value_v, breadcrumbs):
         """
         Backpropagates the evaluated value ('value_v') up the tree along the path ('breadcrumbs').
 
@@ -227,12 +227,12 @@ class MCTS:
 
         # The value 'value_v' is from the perspective of the player whose turn it is at the leaf_node.
         # We need to adjust the sign when updating edges belonging to the *other* player.
-        player_at_leaf = leaf_node.playerTurn
+        player_at_leaf = leaf_node.player_turn
 
         for edge in reversed(breadcrumbs):  # Go backwards up the path
             # Determine if the value needs to be flipped for this edge's perspective
-            # playerTurn on edge = player who *took the action* leading TO edge.outNode
-            if edge.playerTurn == player_at_leaf:
+            # player_turn on edge = player who *took the action* leading TO edge.out_node
+            if edge.player_turn == player_at_leaf:
                 direction = (
                     1.0  # Value is from the perspective of the player who made the move
                 )
@@ -249,7 +249,7 @@ class MCTS:
             lg.logger_mcts.debug(
                 "Updating edge for action %s (player %d): N=%d, W=%.4f, Q=%.4f (value_for_edge=%.4f)",
                 edge.action,
-                edge.playerTurn,
+                edge.player_turn,
                 edge.stats["N"],
                 edge.stats["W"],
                 edge.stats["Q"],
@@ -257,7 +257,7 @@ class MCTS:
             )
 
             # Optional: Render state for debugging if needed
-            # edge.inNode.state.render(lg.logger_mcts) # Render the parent node's state
+            # edge.in_node.state.render(lg.logger_mcts) # Render the parent node's state
 
     def get_root_edges(self):
         return self.root.edges
@@ -285,7 +285,7 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_con
     for _ in range(mcts_config["num_simulations"]):  # Use MCTS_SIMS from config
         # --- Execute one simulation ---
         # a. Select leaf node using PUCT
-        leaf_node, breadcrumbs = mcts.moveToLeaf()
+        leaf_node, breadcrumbs = mcts.move_to_leaf()
 
         # b. Expand & Evaluate Leaf Node (if not terminal)
         if not leaf_node.state.is_game_over():
@@ -314,7 +314,7 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config, self_play_con
             )
 
         # c. Backpropagate the obtained value
-        mcts.backFill(
+        mcts.back_fill(
             leaf_node, value_v, breadcrumbs
         )  # Pass leaf_node for perspective check
 
