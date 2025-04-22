@@ -158,7 +158,7 @@ test_self_play_config: SelfPlayConfigType = {
     'best_model_filename': 'test_best_model.pth.tar', # Separate best model file
 
     # Parallelization - Use fewer workers for quick test
-    'num_parallel_games': 2,     # <<< Low number, adjust based on your cores (e.g., max(1, cpu_count() // 2))
+    'num_parallel_games': 1,     # <<< Low number, adjust based on your cores (e.g., max(1, cpu_count() // 2))
     'worker_device': 'cpu',
     # --- Info needed by helper functions ---
     'action_size': test_model_config['action_size'], # Reference from model config

@@ -77,12 +77,46 @@ class HarmoniesGameState:
             self.winner = None
             self.final_scores = [0, 0]
             self._replenish_piles()
+            
+    def get_canonical_tuple(self):
+        board0_tuples = []
+        for coord, stack_list in sorted(self.player_boards[0].items()): # Sort by coord for determinism
+            board0_tuples.append((coord, tuple(stack_list))) # Convert stack list to tuple
+        board0_items = tuple(board0_tuples)
 
-    # --- Core Methods (_draw_tiles, _replenish_piles, etc.) ---
-    # --- These remain unchanged as their logic doesn't depend ---
-    # --- directly on the specific grid shape, only on the ---
-    # --- PLAYER_BOARD_HEX_COUNT and the VALID_HEXES set      ---
-    # --- used by helper functions like get_legal_moves.      ---
+        board1_tuples = []
+        for coord, stack_list in sorted(self.player_boards[1].items()): # Sort by coord
+            board1_tuples.append((coord, tuple(stack_list))) # Convert stack list to tuple
+        board1_items = tuple(board1_tuples)
+        
+        # Ensure piles are tuples of tuples (sorted internally if order within pile doesn't matter)
+        # Assuming order of available_piles matters, but order within a pile draw doesn't for state ID
+        piles_tuple = tuple(tuple(sorted(pile)) for pile in self.available_piles) 
+        # If self.available_piles might have fewer than NUM_PILES, pad for consistent hashing:
+        # padded_piles = self.available_piles + [()] * (NUM_PILES - len(self.available_piles)) # Pad with empty tuples
+        # piles_tuple = tuple(tuple(sorted(pile)) for pile in padded_piles)
+
+        bag_items = tuple(sorted(self.tile_bag.items())) # Sort by tile type key
+        hand_tuple = tuple(sorted(self.tiles_in_hand))   # Sort hand by tile type
+
+        return (
+            self.current_player,
+            self.turn_phase,
+            hand_tuple,
+            piles_tuple, 
+            bag_items,
+            board0_items, # Now contains tuples of stacks
+            board1_items  # Now contains tuples of stacks
+        )
+
+    def __hash__(self):
+        return hash(self.get_canonical_tuple())
+
+    def __eq__(self, other):
+        if not isinstance(other, HarmoniesGameState):
+            return NotImplemented
+        return self.get_canonical_tuple() == other.get_canonical_tuple()
+
 
     def _draw_tiles(self, num_tiles):
         drawn = []
@@ -160,7 +194,6 @@ class HarmoniesGameState:
             # Should not happen in valid phases
             return []
 
-    # --- apply_move (validates coords against NEW VALID_HEXES) ---
     def apply_move(self, move):
         new_state = self.clone()
         player = new_state.current_player
@@ -308,15 +341,16 @@ class HarmoniesGameState:
     # --- Scoring Methods (unchanged logic, rely on get_neighbors for new grid) ---
     def _calculate_score_for_player(self, player_id):
         board = self.player_boards[player_id]
+        print(f"final board for player {player_id}: {board}")
         score = 0
-        score += self._score_grass(board)
-        score += self._score_mountains(board)
-        score += self._score_fields(board)
-        score += self._score_buildings(board)
-        score += self._score_water(board)
+        score += self._score_grass(board, player_id)
+        score += self._score_mountains(board, player_id)
+        score += self._score_fields(board, player_id)
+        score += self._score_buildings(board, player_id)
+        score += self._score_water(board, player_id)
         return score
 
-    def _score_grass(self, board):
+    def _score_grass(self, board, player):
         score = 0
         for coord, stack in board.items():
             if not stack:  # If stack is empty, skip to the next item
@@ -335,14 +369,14 @@ class HarmoniesGameState:
                     score += 7
         print(
             "player "
-            + str(self.current_player)
+            + str(player)
             + "scored "
             + str(score)
             + " points with grass!"
         )
         return score
 
-    def _score_mountains(self, board):
+    def _score_mountains(self, board, player):
         score = 0
         for coord, stack in board.items():
             if not stack:  # If stack is empty, skip
@@ -366,14 +400,14 @@ class HarmoniesGameState:
                         score += 7
         print(
             "player "
-            + str(self.current_player)
+            + str(player)
             + "scored "
             + str(score)
             + " points with mountains!"
         )
         return score
 
-    def _score_fields(self, board):
+    def _score_fields(self, board, player):
         score = 0
         visited = set()
         fields = [c for c, s in board.items() if self._get_top_tile(board, c) == FIELD]
@@ -395,14 +429,14 @@ class HarmoniesGameState:
                 score += 5
         print(
             "player "
-            + str(self.current_player)
+            + str(player)
             + "scored "
             + str(score)
             + " points with fields!"
         )
         return score
 
-    def _score_buildings(self, board):
+    def _score_buildings(self, board, player):
         score = 0
         for coord, stack in board.items():
             if not stack:  # If stack is empty, skip
@@ -421,14 +455,14 @@ class HarmoniesGameState:
                     score += 5
         print(
             "player "
-            + str(self.current_player)
+            + str(player)
             + "scored "
             + str(score)
             + " points with buildings!"
         )
         return score
 
-    def _score_water(self, board):
+    def _score_water(self, board, player):
         score = 0
         visited = set()
         waters = [c for c, s in board.items() if self._get_top_tile(board, c) == WATER]
@@ -469,7 +503,7 @@ class HarmoniesGameState:
                 score += get_water_score(diameter + 1)
         print(
             "player "
-            + str(self.current_player)
+            + str(player)
             + "scored "
             + str(score)
             + " points with water!"

@@ -398,8 +398,7 @@ class Trainer:
         best_wins = 0
         draws = 0
 
-        # Play games, alternating who goes first
-        # TODO: Consider parallelization for evaluation games as well
+
         for i in range(num_eval_games):
             first_player = i % 2  # Alternate starting player (0=candidate, 1=best)
             print(

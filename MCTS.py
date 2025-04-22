@@ -1,11 +1,8 @@
 import numpy as np
-from config import *  # Assuming this imports MCTS_SIMS, CPUCT, EPSILON, ALPHA, ACTION_SIZE, NUM_HEXES etc.
+from config import *
 from process_game_state import create_state_tensors, get_action_index
 import random
-import loggers as lg  # Your logging setup
-
-# Assuming your HarmoniesGameState class and other necessary imports are available
-
+import loggers as lg
 
 class Node:
     def __init__(self, state):
@@ -13,12 +10,7 @@ class Node:
         self.current_player = state.current_player  # Whose turn it is IN THIS STATE
         # Generate a unique ID for the state if it doesn't have one
         # This ID is crucial for the self.tree dictionary lookup in MCTS
-        if not hasattr(state, "id") or state.id is None:
-            # Simple hash example - replace with a robust unique ID generator if needed
-            self.id = hash(str(state))  # Example: Hash the string representation
-            state.id = self.id  # Assign back to state if needed by MCTS tree lookup
-        else:
-            self.id = state.id
+        self.id = hash(state)
 
         self.edges = {}
 
@@ -57,7 +49,7 @@ class MCTS:
         """
         self.root = root_node
         self.tree = {}  # Stores all nodes encountered in this search {node.id: Node}
-        self.cpuct = mcts_config["cpuct"]
+        self.mcts_config = mcts_config
         self.add_node(root_node)  # Add root node to the tree dictionary
 
     def __len__(self):
@@ -91,9 +83,9 @@ class MCTS:
             simulation_action = None
             # Add Dirichlet noise at the root for exploration
             if current_node == self.root:
-                epsilon = mcts_config_default["dirichlet_epsilon"]
+                epsilon = self.mcts_config["dirichlet_epsilon"]
                 nu = np.random.dirichlet(
-                    [mcts_config_default["dirichlet_alpha"]] * len(current_node.edges)
+                    [self.mcts_config["dirichlet_alpha"]] * len(current_node.edges)
                 )
             else:
                 epsilon = 0
@@ -112,7 +104,7 @@ class MCTS:
             for idx, (action, edge) in enumerate(current_node.edges.items()):
                 # PUCT calculation
                 u = (
-                    self.cpuct
+                    self.mcts_config["cpuct"]
                     * ((1 - epsilon) * edge.stats["P"] + epsilon * nu[idx])
                     * np.sqrt(ns)
                     / (1 + edge.stats["N"])
@@ -160,6 +152,7 @@ class MCTS:
                                    Should have size ACTION_SIZE.
         """
         lg.logger_mcts.info("------EXPANDING LEAF NODE %s------", leaf_node.id)
+        
         # Get all legal actions from the leaf node's state
         legal_moves = leaf_node.state.get_legal_moves()
 
@@ -168,22 +161,29 @@ class MCTS:
                 "Attempting to expand a node with no legal moves (likely terminal)."
             )
             return  # Nothing to expand
-
         for move in legal_moves:
             # Get the prior probability for this specific move from the NN's policy output
             action_index = get_action_index(move)  # Map game move -> flat index
             prior_p = policy_p[action_index]
 
-            # Create the next state by applying the move (MUST return a NEW state object)
             next_state = leaf_node.state.apply_move(move)
+            next_state_id = hash(next_state)
+            
             # Ensure the new state has a unique ID
             if not hasattr(next_state, "id") or next_state.id is None:
                 # Generate ID if missing (use same method as in Node.__init__)
-                next_state.id = hash(str(next_state))  # Example ID generation
+                next_state.id = hash(next_state)  # Example ID generation
 
             # Check if the child node already exists in the tree (e.g., transposition)
-            if next_state.id in self.tree:
-                child_node = self.tree[next_state.id]
+            if next_state_id in self.tree:
+                child_node = self.tree[next_state_id]
+                
+                # --- CRITICAL CHECK ---
+                if next_state_id == leaf_node.id:
+                     lg.logger_mcts.critical(f"CRITICAL LOOP DETECTED: Node {leaf_node.id} expanding move {move} points back to itself!")
+                     # What to do here? Don't add the edge? Raise error?
+                     continue # Avoid adding self-loop edge
+
                 lg.logger_mcts.debug(
                     "Child node %s (state %s) already exists.",
                     child_node.id,
@@ -254,7 +254,6 @@ class MCTS:
                 value_for_edge,
             )
 
-            # Optional: Render state for debugging if needed
             # edge.in_node.state.render(lg.logger_mcts) # Render the parent node's state
 
     def get_root_edges(self):
