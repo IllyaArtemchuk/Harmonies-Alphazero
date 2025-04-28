@@ -62,7 +62,7 @@ mcts_config_eval: MCTSConfigType = {
     "num_simulations": 50,  # MCTS simulations per move
     "cpuct": 1.0,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
-    "dirichlet_alpha": 0,
+    "dirichlet_alpha": 0.1,
     "dirichlet_epsilon": 0,
     # --- Temperature parameter for move selection ---
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
@@ -133,7 +133,7 @@ test_mcts_config: MCTSConfigType = {
 test_mcts_config_eval: MCTSConfigType = {
     'num_simulations': 4,       # <<< ABSOLUTE MINIMUM simulations
     'cpuct': 1.0,               # Keep standard exploration factor   
-    'dirichlet_alpha': 0.0,     # Set to 0 for eval
+    'dirichlet_alpha': 0.1, 
     'dirichlet_epsilon': 0.0,   
     'turns_until_tau0': 0,      # <<< Makes move selection greedy immediately (tau=0)
     # Add eval_mode flag if get_best_action_and_pi supports it

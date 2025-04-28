@@ -1,4 +1,5 @@
 import logging
+import os
 
 
 def setup_logger(name, log_file, level=logging.INFO):
@@ -14,3 +15,7 @@ def setup_logger(name, log_file, level=logging.INFO):
         logger.addHandler(handler)
 
     return logger
+
+
+def game_debug_enabled():
+    return os.environ.get('GAME_DEBUG') == '1'

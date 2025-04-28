@@ -2,6 +2,7 @@ import random
 import copy
 import numpy as np
 from constants import *
+from utils import game_debug_enabled
 from collections import deque  # For BFS
 
 # --- Verification ---
@@ -341,7 +342,8 @@ class HarmoniesGameState:
     # --- Scoring Methods (unchanged logic, rely on get_neighbors for new grid) ---
     def _calculate_score_for_player(self, player_id):
         board = self.player_boards[player_id]
-        print(f"final board for player {player_id}: {board}")
+        if game_debug_enabled():
+            print(f"final board for player {player_id}: {board}")
         score = 0
         score += self._score_grass(board, player_id)
         score += self._score_mountains(board, player_id)
@@ -367,13 +369,14 @@ class HarmoniesGameState:
                     score += 3
                 elif h == 3 and stack[0] == WOOD and stack[1] == WOOD:
                     score += 7
-        print(
-            "player "
-            + str(player)
-            + "scored "
-            + str(score)
-            + " points with grass!"
-        )
+        if game_debug_enabled():
+            print(
+                "player "
+                + str(player)
+                + "scored "
+                + str(score)
+                + " points with grass!"
+            )
         return score
 
     def _score_mountains(self, board, player):
@@ -398,13 +401,14 @@ class HarmoniesGameState:
                         score += 3
                     elif h == 3:
                         score += 7
-        print(
-            "player "
-            + str(player)
-            + "scored "
-            + str(score)
-            + " points with mountains!"
-        )
+        if game_debug_enabled():
+            print(
+                "player "
+                + str(player)
+                + "scored "
+                + str(score)
+                + " points with mountains!"
+            )
         return score
 
     def _score_fields(self, board, player):
@@ -427,13 +431,14 @@ class HarmoniesGameState:
                         q.append(n)
             if len(comp) >= 2:
                 score += 5
-        print(
-            "player "
-            + str(player)
-            + "scored "
-            + str(score)
-            + " points with fields!"
-        )
+        if game_debug_enabled():
+            print(
+                "player "
+                + str(player)
+                + "scored "
+                + str(score)
+                + " points with fields!"
+            )
         return score
 
     def _score_buildings(self, board, player):
@@ -453,13 +458,14 @@ class HarmoniesGameState:
                 n_types.discard(None)
                 if len(n_types) >= 3:
                     score += 5
-        print(
-            "player "
-            + str(player)
-            + "scored "
-            + str(score)
-            + " points with buildings!"
-        )
+        if game_debug_enabled():
+            print(
+                "player "
+                + str(player)
+                + "scored "
+                + str(score)
+                + " points with buildings!"
+            )
         return score
 
     def _score_water(self, board, player):
@@ -501,13 +507,14 @@ class HarmoniesGameState:
                                 q_bfs.append((neighbor_b, dist_b + 1))
                     diameter = max(diameter, max_dist)
                 score += get_water_score(diameter + 1)
-        print(
-            "player "
-            + str(player)
-            + "scored "
-            + str(score)
-            + " points with water!"
-        )
+        if game_debug_enabled():
+            print(
+                "player "
+                + str(player)
+                + "scored "
+                + str(score)
+                + " points with water!"
+            )
         return score
 
     # --- clone (unchanged) ---

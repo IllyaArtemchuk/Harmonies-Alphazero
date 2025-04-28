@@ -4,7 +4,7 @@ TILE_TYPES = ["water", "plant", "wood", "stone", "building", "field"]
 VALID_HEXES = {
     # r = -2 (Top row, 5 hexes)
     (-1, -2),
-    (-0, -2),
+    (0, -2),
     (1, -2),
     (2, -2),
     (3, -2),
