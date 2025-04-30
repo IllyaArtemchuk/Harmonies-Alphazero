@@ -183,13 +183,13 @@ class AlphaZeroModel(nn.Module):
 
         # Initial Conv layer
         self.conv = nn.Conv2d(
-            input_channels, cnn_filters, kernel_size=2, padding="same"
+            input_channels, cnn_filters, kernel_size=3, padding="same"
         )
         self.bn = nn.BatchNorm2d(cnn_filters)
 
         # Residual tower
         self.residual_blocks = nn.ModuleList(
-            [ResidualBlock(cnn_filters, kernel_size=2) for _ in range(num_res_blocks)]
+            [ResidualBlock(cnn_filters, kernel_size=3) for _ in range(num_res_blocks)]
         )
 
         # --- Policy Head Components ---
@@ -249,7 +249,7 @@ class AlphaZeroModel(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, channels, kernel_size=2):
+    def __init__(self, channels, kernel_size=3):
         super(ResidualBlock, self).__init__()
 
         # First convolutional layer

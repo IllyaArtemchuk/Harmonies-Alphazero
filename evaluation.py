@@ -137,46 +137,55 @@ def play_game(player0_func, player1_func, args0=None, args1=None):
 
 def choose_move_greedy(game_state: HarmoniesGameState):
     """
-    Selects the legal move that leads to the immediate next state
+    Selects the legal move that leads to the immediate next state 
     with the highest score for the current player.
-    Handles both 'choose_pile' and 'place_tile' phases somewhat naively.
+    Handles different turn phases correctly.
     """
     current_player = game_state.get_current_player()
-    legal_moves = game_state.get_legal_moves()
+    legal_moves = game_state.get_legal_moves() # Gets moves appropriate for the CURRENT phase
 
     if not legal_moves:
-        return None  # No moves possible
+        print("GREEDY AGENT WARNING: No legal moves available.")
+        return None 
 
     best_move = None
     # Initialize with a very low score to ensure any valid score is better
-    best_score = -float("inf")
+    best_score = -float('inf') 
 
-    # Evaluate each legal move
+    # --- Evaluate each legal move FOR THE CURRENT PHASE ---
     for move in legal_moves:
         try:
             # Simulate applying the move to get the next state
-            # IMPORTANT: Assumes apply_move returns a NEW state object
-            next_state = game_state.apply_move(move)
-
-            # We use the player from the *original* state because apply_move might change it.
-            current_board = next_state.player_boards[current_player]
-            score = next_state._calculate_score_for_player(
-                current_player
-            )  # Check if this recalculates full score
+            # IMPORTANT: apply_move MUST return a NEW state object
+            next_state = game_state.apply_move(move) 
+            
+            # --- Score Evaluation ---
+            score = next_state.calculate_score_for_player(current_player)
 
             # If this move yields a better score, update best move
+            # Note: The 'move' variable itself is already in the correct format 
+            #       (int for pile choice, tuple for placement) because it came 
+            #       from get_legal_moves() for the current phase.
             if score > best_score:
                 best_score = score
                 best_move = move
-
+                
         except Exception as e:
             # Log error if simulating a move fails
-            print(f"GREEDY AGENT ERROR: Failed evaluating move {move}: {e}")
-            continue  # Skip this move
+            print(f"GREEDY AGENT ERROR: Failed evaluating move {move} (Phase: {game_state.turn_phase}): {e}")
+            # import traceback; traceback.print_exc() # Uncomment for detailed debug
+            continue # Skip this move
 
-    # If no move improved the score (or all moves failed), pick randomly
+    # If no move improved the score (or all moves failed), pick randomly from legal moves
     if best_move is None:
-        print("GREEDY AGENT WARNING: No best move found, choosing randomly.")
-        best_move = random.choice(legal_moves)
+        print(f"GREEDY AGENT WARNING: No best scoring move found in phase {game_state.turn_phase}, choosing randomly.")
+        # Ensure we pick from the originally generated legal moves
+        if legal_moves:
+             best_move = random.choice(legal_moves)
+        else:
+             # Should have been caught earlier, but as a failsafe
+             print("GREEDY AGENT ERROR: No legal moves were available initially.")
+             return None 
 
-    return best_move
+    # Mimic alphazero return format (action ,pi). We only need the action
+    return (best_move, ())

@@ -333,8 +333,8 @@ class HarmoniesGameState:
         return 0
 
     def _calculate_final_scores(self):
-        self.final_scores[0] = self._calculate_score_for_player(0)
-        self.final_scores[1] = self._calculate_score_for_player(1)
+        self.final_scores[0] = self.calculate_score_for_player(0)
+        self.final_scores[1] = self.calculate_score_for_player(1)
 
     def _determine_winner(self):
         if self.final_scores[0] > self.final_scores[1]:
@@ -345,7 +345,7 @@ class HarmoniesGameState:
             self.winner = -1
 
     # --- Scoring Methods (unchanged logic, rely on get_neighbors for new grid) ---
-    def _calculate_score_for_player(self, player_id):
+    def calculate_score_for_player(self, player_id):
         board = self.player_boards[player_id]
         if game_debug_enabled():
             print(f"final board for player {player_id}: {board}")
@@ -537,50 +537,3 @@ class HarmoniesGameState:
         return s
 
 
-# # --- Example Usage ---
-# if __name__ == "__main__":
-#     print("--- Initializing Game with 5-4-5-4-5 Row Grid ---")
-#     # Optional: Print the generated hex coordinates to verify
-#     print(f"Generated {len(VALID_HEXES)} hex coordinates:")
-#     # print(sorted(list(VALID_HEXES))) # Uncomment to see all coords
-
-#     # Test neighbors of a few key hexes
-#     print("\nNeighbor Checks:")
-#     print(f"Neighbors of center (0,0): {sorted(get_neighbors((0,0)))}") # Should have 6 neighbors
-#     print(f"Neighbors of top-left (-1,-2): {sorted(get_neighbors((-1,-2)))}") # Corner, should have fewer
-#     print(f"Neighbors of middle-left (-2,0): {sorted(get_neighbors((-2,0)))}") # Edge, should have fewer
-#     print(f"Neighbors of indented edge (-1,-1): {sorted(get_neighbors((-1,-1)))}") # Should have 6 neighbors
-#     print(f"Neighbors of indented edge (1,1): {sorted(get_neighbors((1,1)))}") # Should have 6 neighbors
-#     print("-" * 20)
-
-
-#     game = HarmoniesGameState()
-#     print("\nInitial State:")
-#     print(game)
-
-#     # --- Random Game Simulation (identical structure to before) ---
-#     turn_count = 0; max_turns = 150
-#     print("\n--- Starting Random Game Simulation ---")
-#     while not game.is_game_over() and turn_count < max_turns:
-#         # (Rest of random loop...)
-#         # print(f"\n--- Turn {turn_count // 6 + 1} (Action {turn_count % 6 + 1}) ---") # Verbose
-#         # print(f"Player: {game.get_current_player()}, Phase: {game.turn_phase}")
-#         legal_moves = game.get_legal_moves()
-#         if not legal_moves:
-#             print("No legal moves available!")
-#             if game.turn_phase == "choose_pile" and not game.available_piles and sum(game.tile_bag.values()) == 0:
-#                  if not game.game_over:
-#                      print("Forcing score calculation..."); game.game_over = True ; game.turn_phase = "game_over"
-#                      game._calculate_final_scores() ; game._determine_winner()
-#             break
-#         chosen_move = random.choice(legal_moves)
-#         # print(f"Player {game.get_current_player()} chooses move: {chosen_move}") # Verbose
-#         try:
-#             game = game.apply_move(chosen_move)
-#             turn_count += 1
-#         except ValueError as e:
-#             print(f"Error: {e}\nCurrent State:\n{game}\nMove Attempted: {chosen_move}\nLegal Moves: {legal_moves}")
-#             break
-
-#     print("\n" + "="*20 + "\nGame Over!\n" + "="*20)
-#     print(f"Final State (after {turn_count} actions):"); print(game)
