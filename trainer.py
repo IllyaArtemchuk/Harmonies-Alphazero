@@ -398,7 +398,6 @@ class Trainer:
         best_wins = 0
         draws = 0
 
-
         for i in range(num_eval_games):
             first_player = i % 2  # Alternate starting player (0=candidate, 1=best)
             print(

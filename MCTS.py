@@ -4,6 +4,7 @@ from process_game_state import create_state_tensors, get_action_index
 import random
 import loggers as lg
 
+
 class Node:
     def __init__(self, state):
         self.state = state
@@ -152,7 +153,7 @@ class MCTS:
                                    Should have size ACTION_SIZE.
         """
         lg.logger_mcts.info("------EXPANDING LEAF NODE %s------", leaf_node.id)
-        
+
         # Get all legal actions from the leaf node's state
         legal_moves = leaf_node.state.get_legal_moves()
 
@@ -168,7 +169,7 @@ class MCTS:
 
             next_state = leaf_node.state.apply_move(move)
             next_state_id = hash(next_state)
-            
+
             # Ensure the new state has a unique ID
             if not hasattr(next_state, "id") or next_state.id is None:
                 # Generate ID if missing (use same method as in Node.__init__)
@@ -177,12 +178,14 @@ class MCTS:
             # Check if the child node already exists in the tree (e.g., transposition)
             if next_state_id in self.tree:
                 child_node = self.tree[next_state_id]
-                
+
                 # --- CRITICAL CHECK ---
                 if next_state_id == leaf_node.id:
-                     lg.logger_mcts.critical(f"CRITICAL LOOP DETECTED: Node {leaf_node.id} expanding move {move} points back to itself!")
-                     # What to do here? Don't add the edge? Raise error?
-                     continue # Avoid adding self-loop edge
+                    lg.logger_mcts.critical(
+                        f"CRITICAL LOOP DETECTED: Node {leaf_node.id} expanding move {move} points back to itself!"
+                    )
+                    # What to do here? Don't add the edge? Raise error?
+                    continue  # Avoid adding self-loop edge
 
                 lg.logger_mcts.debug(
                     "Child node %s (state %s) already exists.",
@@ -318,7 +321,9 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
 
     # 3. Get Action Probabilities (pi_target) from Root Visit Counts
     root_edges = mcts.get_root_edges()
-    pi_target = np.zeros(mcts_config["action_size"], dtype=int)  # Use ACTION_SIZE from config
+    pi_target = np.zeros(
+        mcts_config["action_size"], dtype=int
+    )  # Use ACTION_SIZE from config
     visit_counts = []  # Store (action, visits) for choosing the move
     total_visits = 0
 

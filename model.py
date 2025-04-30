@@ -37,7 +37,7 @@ class ModelManager:
             self.optimizer = optim.SGD(
                 self.model.parameters(),
                 lr=self.learning_rate,
-                momentum=training_config["momentum"]
+                momentum=training_config["momentum"],
             )
 
         self.value_loss_fn = nn.MSELoss()

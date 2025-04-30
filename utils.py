@@ -18,4 +18,4 @@ def setup_logger(name, log_file, level=logging.INFO):
 
 
 def game_debug_enabled():
-    return os.environ.get('GAME_DEBUG') == '1'
+    return os.environ.get("GAME_DEBUG") == "1"
