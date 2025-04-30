@@ -79,9 +79,9 @@ self_play_config_default: SelfPlayConfigType = {
     "worker_device": "cpu",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
     "checkpoint_folder": "./harmonies_az_run/",  # Folder to save model checkpoints
-    "replay_buffer_folder": './TEST_RUN_BUFFER/',
-    "replay_buffer_filename": 'test_replay_buffer.pkl',
-    "best_model_filename": "test_best_model.pth.tar", 
+    "replay_buffer_folder": './RUN_BUFFER/',
+    "replay_buffer_filename": 'replay_buffer.pkl',
+    "best_model_filename": "best_model.pth.tar", 
     # --- Evaluation Settings (run periodically, e.g., after N iterations) ---
     "eval_episodes": 20,  # Number of games to play between current and best model
     "eval_win_rate_threshold": 0.55,  # Win rate needed for new model to become the 'best'
