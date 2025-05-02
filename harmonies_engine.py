@@ -14,7 +14,6 @@ if len(VALID_HEXES) != expected_count:
 PLAYER_BOARD_HEX_COUNT = expected_count
 
 
-# --- Water Scoring Table (unchanged) ---
 WATER_SCORES = {1: 0, 2: 2, 3: 5, 4: 8, 5: 11, 6: 15}
 
 
@@ -44,7 +43,6 @@ def get_neighbors(coord):
 
 
 def bfs_shortest_path(start_node, end_node, graph_nodes, get_adj_func):
-    # (Implementation is identical to previous versions)
     if start_node == end_node:
         return 0
     queue = deque([(start_node, 0)])
@@ -96,15 +94,9 @@ class HarmoniesGameState:
             )  # Convert stack list to tuple
         board1_items = tuple(board1_tuples)
 
-        # Ensure piles are tuples of tuples (sorted internally if order within pile doesn't matter)
-        # Assuming order of available_piles matters, but order within a pile draw doesn't for state ID
         piles_tuple = tuple(tuple(sorted(pile)) for pile in self.available_piles)
-        # If self.available_piles might have fewer than NUM_PILES, pad for consistent hashing:
-        # padded_piles = self.available_piles + [()] * (NUM_PILES - len(self.available_piles)) # Pad with empty tuples
-        # piles_tuple = tuple(tuple(sorted(pile)) for pile in padded_piles)
-
-        bag_items = tuple(sorted(self.tile_bag.items()))  # Sort by tile type key
-        hand_tuple = tuple(sorted(self.tiles_in_hand))  # Sort hand by tile type
+        bag_items = tuple(sorted(self.tile_bag.items()))
+        hand_tuple = tuple(sorted(self.tiles_in_hand))
 
         return (
             self.current_player,
@@ -112,8 +104,8 @@ class HarmoniesGameState:
             hand_tuple,
             piles_tuple,
             bag_items,
-            board0_items,  # Now contains tuples of stacks
-            board1_items,  # Now contains tuples of stacks
+            board0_items,
+            board1_items,
         )
 
     def __hash__(self):
@@ -241,7 +233,6 @@ class HarmoniesGameState:
             if coord not in VALID_HEXES:
                 raise ValueError(f"Invalid coordinate: {coord}")
 
-            # Get the specific tile from hand using index AND remove it
             tile_to_place = new_state.tiles_in_hand.pop(tile_index)
 
             # Perform placement and legality checks (using the chosen tile)
@@ -388,7 +379,7 @@ class HarmoniesGameState:
 
             # Only assign top and h if stack is NOT empty
             top = stack[-1]
-            h = len(stack)
+            height = len(stack)
 
             if top == STONE:
                 is_adj = any(
@@ -396,11 +387,11 @@ class HarmoniesGameState:
                     for nc in get_neighbors(coord)
                 )
                 if is_adj:
-                    if h == 1:
+                    if height == 1:
                         score += 1
-                    elif h == 2:
+                    elif height == 2:
                         score += 3
-                    elif h == 3:
+                    elif height == 3:
                         score += 7
         if game_debug_enabled():
             print(
@@ -448,11 +439,10 @@ class HarmoniesGameState:
             if not stack:  # If stack is empty, skip
                 continue
 
-            # Only assign top and h if stack is NOT empty
             top = stack[-1]
-            h = len(stack)
+            height = len(stack)
 
-            if top == BUILDING and h == 2:
+            if top == BUILDING and height == 2:
                 n_types = set(
                     self._get_top_tile(board, nc) for nc in get_neighbors(coord)
                 )
@@ -535,5 +525,3 @@ class HarmoniesGameState:
             s += f"  {board_repr}\n"
         s += "---------------------------------------------\n"
         return s
-
-

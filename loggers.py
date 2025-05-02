@@ -1,5 +1,6 @@
 from utils import setup_logger
 from settings import run_folder
+import logging
 
 ### SET all LOGGER_DISABLED to True to disable logging
 ### WARNING: the mcts log file gets big quite quickly
@@ -11,6 +12,12 @@ LOGGER_DISABLED = {
     "mcts": False,
     "model": False,
 }
+
+LOG_LEVEL = (
+    logging.DEBUG
+)  # Set to logging.INFO for less verbose output during normal runs
+LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(module)s:%(lineno)d] - %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 logger_mcts = setup_logger("logger_mcts", run_folder + "logs/logger_mcts.log")
 logger_mcts.disabled = LOGGER_DISABLED["mcts"]

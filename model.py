@@ -2,6 +2,7 @@ import torch
 from torch import optim, nn
 from pathlib import Path  # Optional, for cleaner path handling
 from config_types import TrainingConfigType, ModelConfigType
+from loggers import logger_model
 
 
 class ModelManager:
@@ -24,6 +25,7 @@ class ModelManager:
             num_res_blocks=model_config["num_res_blocks"],
             # Add policy/value head conv filter counts if they vary
         ).to(self.device)
+        logger_model.info("AlphaZeroModel instantiated on device.")
 
         self.learning_rate = training_config["learning_rate"]
 
@@ -39,6 +41,11 @@ class ModelManager:
                 lr=self.learning_rate,
                 momentum=training_config["momentum"],
             )
+
+        logger_model.info(
+            f"Optimizer {training_config.get('optimizer_type', 'Adam')} initialized with LR \
+            {self.learning_rate}, WD {training_config['weight_decay']}."
+        )
 
         self.value_loss_fn = nn.MSELoss()
         self.value_loss_weight = training_config["value_loss_weight"]
@@ -92,9 +99,7 @@ class ModelManager:
         board_tensor = board_tensor.to(self.device)
         global_features_tensor = global_features_tensor.to(self.device)
         target_policies = target_policies.to(self.device)
-        target_values = target_values.to(self.device).unsqueeze(
-            1
-        )  # Ensure value target has shape (batch, 1)
+        target_values = target_values.to(self.device)
 
         self.model.train()  # Set model to training mode
         self.optimizer.zero_grad()  # Reset gradients
@@ -115,6 +120,11 @@ class ModelManager:
             self.policy_loss_weight * policy_loss + self.value_loss_weight * value_loss
         )
 
+        logger_model.debug(
+            f"Train Step Losses - Total: {total_loss.item():.4f}, \
+            Policy: {policy_loss.item():.4f}, Value: {value_loss.item():.4f}"
+        )
+
         # Backward pass and optimization
         total_loss.backward()
         self.optimizer.step()
@@ -127,6 +137,7 @@ class ModelManager:
         folder_path.mkdir(parents=True, exist_ok=True)
         filepath = folder_path / filename
 
+        logger_model.info(f"Saving checkpoint to {filepath}...")
         state = {
             "model_config": self.model_config,
             "training_config": self.training_config,
