@@ -98,7 +98,6 @@ def play_game(player0_func, player1_func, args0=None, args1=None):
             # Call the appropriate function to get the move
             # get_best_action_and_pi returns (action, pi), greedy returns action
             result = move_function(*move_args)
-
             if isinstance(result, tuple):  # AZ agent likely returned (action, pi)
                 best_action = result[0]
             else:

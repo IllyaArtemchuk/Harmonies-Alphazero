@@ -133,17 +133,27 @@ def create_global_features(game_state):
     return global_features
 
 
-def get_action_index(action):
-    """Maps a game action (pile_idx or (tile_idx, coord)) to a flat index (0-73)."""
-    # Example logic:
+def get_action_index(action, hand_tiles=None): # May need hand_tiles if action is (tile_idx, coord)
+    """Maps a game action (pile_idx or (tile_type, coord)) to a flat index (0-142)."""
     if isinstance(action, int):  # Pile choice
-        return action  # Assumes pile indices 0-4 match action indices 0-4
-    elif isinstance(action, tuple) and len(action) == 2:  # Placement (tile_idx, coord)
-        tile_idx, coord = action
-        # Need a consistent mapping from coord (q,r) to a linear index 0-22
-        coord_map = coordinate_to_index_map  # Precompute this mapping
-        coord_idx = coord_map[coord]
-        # Calculate flat index: 5 (piles) + tile_idx * 23 + coord_idx
-        return 5 + (tile_idx * NUM_HEXES) + coord_idx
+        if 0 <= action < NUM_PILES:
+            return action
+        else:
+             raise ValueError(f"Invalid pile index action: {action}")
+    elif isinstance(action, tuple) and len(action) == 2:
+        # If the action passed is still (tile_idx, coord) from get_legal_moves,
+        # we need the hand to find the tile_type.
+        # It's cleaner if MCTS passes (tile_type, coord) directly.
+        # Assuming action is already (tile_type, coord):
+        tile_type, coord = action
+        if tile_type not in TILE_TYPES:
+             raise ValueError(f"Invalid tile type in action: {tile_type}")
+        if coord not in coordinate_to_index_map:
+             raise ValueError(f"Invalid coordinate in action: {coord}")
+
+        tile_type_idx = TILE_TYPES.index(tile_type)
+        coord_idx = coordinate_to_index_map[coord]
+        # Calculate flat index: 5 (piles) + tile_type_idx * 23 + coord_idx
+        return NUM_PILES + (tile_type_idx * NUM_HEXES) + coord_idx
     else:
         raise ValueError(f"Invalid action format: {action}")

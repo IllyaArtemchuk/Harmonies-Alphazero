@@ -36,7 +36,7 @@ training_config_default: TrainingConfigType = {
         else "mps" if torch.backends.mps.is_available() else "cpu"
     ),
     "optimizer_type": "Adam",
-    "learning_rate": 0.001,
+    "learning_rate": 0.002,
     "momentum": 0.9,
     "weight_decay": 0.0001,  # L2 regularization strength
     "value_loss_weight": 0.5,
@@ -46,11 +46,12 @@ training_config_default: TrainingConfigType = {
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 50,  # MCTS simulations per move
-    "cpuct": 1.0,  # Exploration constant for PUCT
+    "num_simulations": 200,  # MCTS simulations per move
+    "cpuct": 1.25,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
     "dirichlet_epsilon": 0.2,
+    "fpu_value": 0.25,
     # --- Temperature parameter for move selection ---
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
@@ -59,11 +60,12 @@ mcts_config_default: MCTSConfigType = {
 }
 
 mcts_config_eval: MCTSConfigType = {
-    "num_simulations": 50,  # MCTS simulations per move
-    "cpuct": 1.0,  # Exploration constant for PUCT
+    "num_simulations": 200,  # MCTS simulations per move
+    "cpuct": 1.25,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.1,
     "dirichlet_epsilon": 0,
+    "fpu_value": 0.25,
     # --- Temperature parameter for move selection ---
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
@@ -75,8 +77,8 @@ self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 100,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
     "epochs_per_iter": 1,  # Number of training epochs over the buffer per iteration
-    "num_parallel_games": 12,  # Number of games that will run in parallel
-    "worker_device": "cpu",  # Device used for the self play phase by the workers
+    "num_parallel_games": 4,  # Number of games that will run in parallel
+    "worker_device": "mps",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
     "checkpoint_folder": "./harmonies_az_run/",  # Folder to save model checkpoints
     "replay_buffer_folder": "./RUN_BUFFER/",
@@ -124,6 +126,7 @@ test_mcts_config: MCTSConfigType = {
     "cpuct": 1.0,  # Keep standard exploration factor
     "dirichlet_alpha": 0.3,  # Noise params don't affect speed much
     "dirichlet_epsilon": 0.0,  # <<< DISABLE root noise for simplicity in test run
+    "fpu_value": 0.25,
     "turns_until_tau0": 0,  # <<< Makes move selection greedy immediately (tau=0)
     # Add eval_mode flag if get_best_action_and_pi supports it
     "action_size": ACTION_SIZE,
@@ -135,6 +138,7 @@ test_mcts_config_eval: MCTSConfigType = {
     "cpuct": 1.0,  # Keep standard exploration factor
     "dirichlet_alpha": 0.1,
     "dirichlet_epsilon": 0.0,
+    "fpu_value": 0.25,
     "turns_until_tau0": 0,  # <<< Makes move selection greedy immediately (tau=0)
     # Add eval_mode flag if get_best_action_and_pi supports it
     "action_size": ACTION_SIZE,

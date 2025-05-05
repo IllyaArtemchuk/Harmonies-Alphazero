@@ -47,7 +47,6 @@ EMPTY_HEX_END_THRESHOLD = 2
 sorted_coords = sorted(list(VALID_HEXES))
 
 coordinate_to_index_map = {coord: index for index, coord in enumerate(sorted_coords)}
-
 INPUT_CHANNELS = 38
 GLOBAL_FEATURE_SIZE = 42
 ACTION_SIZE = 74

@@ -32,6 +32,7 @@ class MCTSConfigType(TypedDict):
     cpuct: float
     dirichlet_alpha: float
     dirichlet_epsilon: float
+    fpu_value: float
     turns_until_tau0: int
     action_size: int
     testing: bool

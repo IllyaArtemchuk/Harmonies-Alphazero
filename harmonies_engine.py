@@ -141,7 +141,8 @@ class HarmoniesGameState:
     def _get_top_tile(self, board, coord):
         return board.get(coord, [None])[-1]
 
-    # --- get_legal_moves (iterates over the NEW VALID_HEXES set) ---
+    """Returns a list of legal moves mapped as (tile_index, coord) where \ 
+        tile_index is the tile within a player's hand"""
     def get_legal_moves(self):
         legal_moves = []
         player = self.current_player

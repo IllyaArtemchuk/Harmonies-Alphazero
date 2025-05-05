@@ -180,6 +180,8 @@ class Trainer:
             avg_total_loss = total_loss_accum / batches_processed
             avg_policy_loss = policy_loss_accum / batches_processed
             avg_value_loss = value_loss_accum / batches_processed
+            lg.logger_main.info(f"  Avg Loss: {avg_total_loss:.4f} (Policy: {avg_policy_loss:.4f},\
+                    Value: {avg_value_loss:.4f})")
             print(
                 f"  Avg Loss: {avg_total_loss:.4f} (Policy: {avg_policy_loss:.4f},\
                     Value: {avg_value_loss:.4f})"
@@ -310,11 +312,14 @@ class Trainer:
             f"  Results: Candidate={candidate_wins}, Best={best_wins}, Draws/Errors={draws}"
         )
         print(f"  Candidate Win Rate (vs Best, excluding draws): {win_rate:.3f}")
-
+        lg.logger_main.info(f"--- Evaluation Finished ---")
+        lg.logger_main.info( f"  Results: Candidate={candidate_wins}, Best={best_wins}, Draws/Errors={draws}")
+        lg.logger_main.info(f"  Candidate Win Rate (vs Best, excluding draws): {win_rate:.3f}")
         # Check if the candidate model is significantly better
         if win_rate > win_threshold:
             print(f"  Candidate model passed threshold ({win_threshold:.2f})!")
             print(f"  Updating best model checkpoint...")
+            lg.logger_main.info(f"  Candidate model passed threshold ({win_threshold:.2f})!")
             # Save the current model's weights AS the new best model
             self.model_manager.save_checkpoint(
                 folder=checkpoint_folder, filename=self.best_model_filename
@@ -328,6 +333,7 @@ class Trainer:
             print(
                 f"  Candidate model did not pass threshold ({win_threshold:.2f}). Best model remains unchanged."
             )
+            lg.logger_main.info(f"  Candidate model did not pass threshold ({win_threshold:.2f}). Best model remains unchanged.")
             # Optional: Reload the current model_manager with the best weights if desired
             # self.model_manager.load_checkpoint(folder=checkpoint_folder, filename=self.best_model_filename)
 
