@@ -46,8 +46,8 @@ training_config_default: TrainingConfigType = {
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 300,  # MCTS simulations per move
-    "cpuct": 1.25,  # Exploration constant for PUCT
+    "num_simulations": 800,  # MCTS simulations per move
+    "cpuct": 1,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
     "dirichlet_epsilon": 0.2,
@@ -60,8 +60,8 @@ mcts_config_default: MCTSConfigType = {
 }
 
 mcts_config_eval: MCTSConfigType = {
-    "num_simulations": 300,  # MCTS simulations per move
-    "cpuct": 1.25,  # Exploration constant for PUCT
+    "num_simulations": 800,  # MCTS simulations per move
+    "cpuct": 1,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.1,
     "dirichlet_epsilon": 0,
@@ -76,7 +76,7 @@ mcts_config_eval: MCTSConfigType = {
 self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 100,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
-    "epochs_per_iter": 10,  # Number of training epochs over the buffer per iteration
+    "epochs_per_iter": 20,  # Number of training epochs over the buffer per iteration
     "num_parallel_games": 3,  # Number of games that will run in parallel
     "worker_device": "mps",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
