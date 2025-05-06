@@ -173,7 +173,8 @@ class Trainer:
                 policy_loss_accum += p_loss
                 value_loss_accum += v_loss
                 batches_processed += 1
-
+        lg.logger_main.info(f"  Avg Loss: {total_loss_accum / batches_processed:.4f} (Policy: {policy_loss_accum / batches_processed:.4f},\
+                Value: {value_loss_accum / batches_processed:.4f})")
         end_time = time.time()
         print("--- Training Finished ---")
         if batches_processed > 0:

@@ -4,6 +4,7 @@ import numpy as np
 from constants import *
 from utils import game_debug_enabled
 from collections import deque  # For BFS
+import loggers as lg
 
 # --- Verification ---
 expected_count = 23
@@ -141,31 +142,41 @@ class HarmoniesGameState:
     def _get_top_tile(self, board, coord):
         return board.get(coord, [None])[-1]
 
-    """Returns a list of legal moves mapped as (tile_index, coord) where \ 
-        tile_index is the tile within a player's hand"""
     def get_legal_moves(self):
-        legal_moves = []
+        """
+        Returns a list of unique legal moves for the current player and phase.
+        - For 'choose_pile': Returns list of integer pile indices [0, 1, ...].
+        - For 'place_tile_*': Returns list of tuples [(tile_type, coord), ...],
+          representing placing a tile of tile_type at coordinate (q, r).
+        """
         player = self.current_player
         board = self.player_boards[player]
 
         if self.turn_phase == "choose_pile":
             # Moves are just pile indices
+            # Ensure piles actually exist before returning indices
             return list(range(len(self.available_piles)))
 
         elif self.turn_phase.startswith("place_tile"):
             if not self.tiles_in_hand:
-                return []  # Should not happen if logic is correct
+                return []  # No tiles, no placement moves
 
-            # Iterate through each tile currently in hand
-            for tile_index, tile_to_place in enumerate(self.tiles_in_hand):
-                # For this specific tile, find all legal coordinates
+            legal_move_set = set() # Use a set to store unique moves automatically
+
+            # Iterate through the unique types of tiles available in hand
+            unique_tile_types_in_hand = set(self.tiles_in_hand)
+
+            for tile_to_place in unique_tile_types_in_hand:
+                # For this tile type, find all legal coordinates
                 for coord in VALID_HEXES:
                     is_legal_placement = False
                     if coord not in board:  # Placing on an empty spot is always allowed
                         is_legal_placement = True
                     else:
-                        # Check stacking rules for THIS tile_to_place
+                        # Check stacking rules for THIS tile_type
                         stack = board[coord]
+                        if not stack: # Should not happen if coord in board, but safety check
+                           continue
                         top_tile = stack[-1]
                         height = len(stack)
 
@@ -181,16 +192,19 @@ class HarmoniesGameState:
                             and height < 2
                         ):
                             is_legal_placement = True
-                        # No other stacking allowed by default
+                        # Other types (WATER, FIELD, WOOD) can only be placed on empty hexes (handled above)
 
-                    # If placing this tile at this coord is legal, add the move
+                    # If placing this tile type at this coord is legal, add the move
                     if is_legal_placement:
-                        # The move specifies WHICH tile and WHERE
-                        legal_moves.append((tile_index, coord))
+                        # The move specifies WHICH tile type and WHERE
+                        legal_move_set.add((tile_to_place, coord))
 
-            return legal_moves  # Returns list of (tile_idx, (q,r)) tuples
+            # Convert the set of unique moves back to a list for consistency
+            return list(legal_move_set)
+
         else:
-            # Should not happen in valid phases
+            # Should not happen in valid phases (e.g., game_over)
+            lg.logger_main.warning(f"get_legal_moves called during unexpected phase: {self.turn_phase}")
             return []
 
     def apply_move(self, move):
@@ -199,7 +213,6 @@ class HarmoniesGameState:
         board = new_state.player_boards[player]
 
         if new_state.turn_phase == "choose_pile":
-            # --- Pile Choice Logic (remains the same) ---
             pile_index = move
             if not isinstance(pile_index, int) or not (
                 0 <= pile_index < len(new_state.available_piles)
@@ -208,35 +221,36 @@ class HarmoniesGameState:
             new_state.tiles_in_hand = new_state.available_piles.pop(pile_index)
             # When pile is chosen, tiles enter hand. Placement order is chosen turn-by-turn.
             new_state.turn_phase = "place_tile_1"
-            # --- End Pile Choice Logic ---
 
         elif new_state.turn_phase.startswith("place_tile"):
-            # --- Tile Placement Logic (Modified) ---
-            # Expect move to be (tile_index, coord)
+            # Expect move to be (tile_type, coord)
             if not (
                 isinstance(move, tuple)
                 and len(move) == 2
-                and isinstance(move[0], int)
-                and isinstance(move[1], tuple)
+                and isinstance(move[0], str) # Check for tile_type string
+                and move[0] in TILE_TYPES   # Check if it's a valid type
+                and isinstance(move[1], tuple) # Check for coord tuple
             ):
                 raise ValueError(
-                    f"Invalid move format for placement phase: {move}. Expected (tile_index, (q, r))"
+                    f"Invalid move format for placement phase: {move}. Expected (tile_type, (q, r))"
                 )
 
-            tile_index, coord = move
+            tile_to_place, coord = move # Unpack the type and coordinate
 
-            # Validate tile_index
-            if not (0 <= tile_index < len(new_state.tiles_in_hand)):
-                raise ValueError(
-                    f"Invalid tile_index {tile_index} for hand {new_state.tiles_in_hand}"
-                )
-            # Validate coordinate
+           # Validate coordinate
             if coord not in VALID_HEXES:
                 raise ValueError(f"Invalid coordinate: {coord}")
 
-            tile_to_place = new_state.tiles_in_hand.pop(tile_index)
+            if tile_to_place not in new_state.tiles_in_hand:
+                 # This indicates a bug upstream (MCTS chose an illegal move)
+                 raise ValueError(
+                     f"Illegal move attempted: Tile '{tile_to_place}' not found in hand {new_state.tiles_in_hand}"
+                 )
+            # Remove the first occurrence of the specified tile type
+            new_state.tiles_in_hand.remove(tile_to_place)
 
-            # Perform placement and legality checks (using the chosen tile)
+
+            # Perform placement and legality checks (using the tile_type)
             is_legal = False  # Re-check legality for safety
             if coord not in board:
                 is_legal = True
@@ -245,6 +259,7 @@ class HarmoniesGameState:
                 stack = board[coord]
                 top = stack[-1]
                 h = len(stack)
+                # Use tile_to_place (which is the tile type string) directly
                 if tile_to_place == PLANT and top == WOOD and h <= 2:
                     is_legal = True
                 elif tile_to_place == STONE and top == STONE and h < 3:
@@ -259,12 +274,14 @@ class HarmoniesGameState:
                 if is_legal:
                     board[coord].append(tile_to_place)  # Add to existing stack
                 else:
-                    # This should ideally not happen if get_legal_moves is correct
+                    # This should ideally not happen if get_legal_moves/MCTS is correct
                     # Need to put the tile back in hand before raising error for consistent state
-                    new_state.tiles_in_hand.insert(tile_index, tile_to_place)
+                    # NOTE: Inserting back might be tricky if order mattered, but here it likely doesn't.
+                    # For simplicity, just raise. A more robust recovery could try inserting.
                     raise ValueError(
-                        f"Illegal move attempted in apply_move: Cannot place {tile_to_place} on {coord} with {stack}"
+                        f"Illegal move attempted in apply_move: Cannot place {tile_to_place} on {coord} with stack {stack} (Hand was: {new_state.tiles_in_hand} after removal attempt)"
                     )
+
 
             # Advance turn phase (logic remains the same)
             if new_state.turn_phase == "place_tile_1":

@@ -133,6 +133,22 @@ def create_global_features(game_state):
     return global_features
 
 
+# def get_action_index(action):
+#     """Maps a game action (pile_idx or (tile_idx, coord)) to a flat index (0-73)."""
+#     # Example logic:
+#     if isinstance(action, int):  # Pile choice
+#         return action  # Assumes pile indices 0-4 match action indices 0-4
+#     elif isinstance(action, tuple) and len(action) == 2:  # Placement (tile_idx, coord)
+#         tile_idx, coord = action
+#         # Need a consistent mapping from coord (q,r) to a linear index 0-22
+#         coord_map = coordinate_to_index_map  # Precompute this mapping
+#         coord_idx = coord_map[coord]
+#         # Calculate flat index: 5 (piles) + tile_idx * 23 + coord_idx
+#         return 5 + (tile_idx * NUM_HEXES) + coord_idx
+#     else:
+#         raise ValueError(f"Invalid action format: {action}")
+
+# In process_game_state.py
 def get_action_index(action, hand_tiles=None): # May need hand_tiles if action is (tile_idx, coord)
     """Maps a game action (pile_idx or (tile_type, coord)) to a flat index (0-142)."""
     if isinstance(action, int):  # Pile choice
@@ -153,7 +169,7 @@ def get_action_index(action, hand_tiles=None): # May need hand_tiles if action i
 
         tile_type_idx = TILE_TYPES.index(tile_type)
         coord_idx = coordinate_to_index_map[coord]
-        # Calculate flat index: 5 (piles) + tile_type_idx * 23 + coord_idx
+        # Calculate flat index: 5 (piles) + tile_type_idx * 23 + coord_idx (143 total)
         return NUM_PILES + (tile_type_idx * NUM_HEXES) + coord_idx
     else:
         raise ValueError(f"Invalid action format: {action}")

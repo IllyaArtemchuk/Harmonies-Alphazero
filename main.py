@@ -29,7 +29,7 @@ if __name__ == "__main__":
     model_mgr = ModelManager(model_config_default, training_config_default)
 
     # Optionally load the very first checkpoint if continuing a run
-    # model_mgr.load_checkpoint(folder=self_play_config_default['checkpoint_folder'])
+    model_mgr.load_checkpoint(folder=self_play_config_default['checkpoint_folder'], filename="iteration_0030.pth.tar")
 
     # Create and run the trainer
     trainer = Trainer(

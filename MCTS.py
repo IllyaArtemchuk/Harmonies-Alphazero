@@ -79,6 +79,14 @@ class MCTS:
                 current_node.id,
                 current_node.current_player,
             )
+            
+            legal_moves = current_node.state.get_legal_moves()
+            if not legal_moves:
+                lg.logger_mcts.warning(f"Node {current_node.id} is not a leaf but has no legal moves. Stopping traversal.")
+                break # Reached a terminal state effectively
+
+            legal_moves_set = set(legal_moves)
+            
             max_qu = -float("inf")
             simulation_edge = None
             simulation_action = None
@@ -95,51 +103,72 @@ class MCTS:
                 )  # Placeholder, only used if epsilon > 0
             # Calculate total visits Ns for the current node's outgoing edges
             ns = 0
-            for (
-                edge
-            ) in current_node.edges.values():  # Iterate through Edge objects in dict
+            for edge in current_node.edges.values():
                 ns += edge.stats["N"]
 
+            sqrt_ns = np.sqrt(max(1.0, ns)) # Avoid sqrt(0)
+            edge_index = 0
             # Select the edge with the highest PUCT score
             # Use items() to get action and edge, enumerate for nu index
-            for idx, (action, edge) in enumerate(current_node.edges.items()):
-                # PUCT calculation
-                u = (
-                    self.mcts_config["cpuct"]
-                    * ((1 - epsilon) * edge.stats["P"] + epsilon * nu[idx])
-                    * np.sqrt(ns)
-                    / (1 + edge.stats["N"])
-                )
-                q = edge.stats["Q"]
+            for action, edge in current_node.edges.items():
 
-                # --- Optional: Log PUCT details ---
-                # lg.logger_mcts.info(...)
+                if action in legal_moves_set:
+                    # PUCT calculation
+                    # Use edge.stats['P'] which is the prior from the network
+                    prior_p = edge.stats['P']
 
-                if q + u > max_qu:
-                    max_qu = q + u
-                    simulation_action = action  # Store the action itself
-                    simulation_edge = edge  # Store the edge object
+                    # Apply optional Dirichlet noise to the prior term
+                    noisy_prior = (1 - epsilon) * prior_p + epsilon * nu[edge_index]
+
+                    u = (
+                        self.mcts_config["cpuct"]
+                        * noisy_prior
+                        * sqrt_ns
+                        / (1 + edge.stats["N"])
+                    )
+
+                    # Get Q value (handle FPU if desired - Q is 0 for N=0 here)
+                    q = edge.stats["Q"] # Q is 0 if N is 0
+
+                    # --- Optional: Log PUCT details ---
+                    lg.logger_mcts.debug(f"  Action: {action}, Legal: Yes, Q: {q:.3f}, N: {edge.stats['N']}, P: {prior_p:.3f}, NoisyP: {noisy_prior:.3f}, U: {u:.3f}, Q+U: {q+u:.3f}")
+
+
+                    if q + u > max_qu:
+                        max_qu = q + u
+                        simulation_action = action # Store the action
+                        simulation_edge = edge     # Store the edge object
+                else:
+                    # Log actions that exist as edges but are not currently legal (for debugging)
+                    lg.logger_mcts.debug(f"  Action: {action}, Legal: No, Skipping PUCT.")
+
+                edge_index += 1 # Increment noise index regardless of legality? Or only for legal? Typically applied across all existing edge priors.
+
 
             if simulation_edge is None:
-                # This should not happen if a node is not a leaf (must have edges)
-                # unless maybe all priors P were zero? Handle robustly.
+                # This can happen if the node has edges, but *none* of them correspond to
+                # currently legal moves (e.g., weird game state or bug).
+                # Or if legal_moves was empty initially.
                 lg.logger_mcts.error(
-                    "MCTS Selection failed: Node %s is not leaf but no edge selected.",
-                    current_node.id,
+                    "MCTS Selection failed: Node %s has no legal actions among its existing edges (%d edges total, %d legal moves found). State: %s",
+                    current_node.id, len(current_node.edges), len(legal_moves_set), current_node.state
                 )
-                # Handle error: maybe break, maybe choose randomly? For now, let's raise.
-                raise Exception(f"MCTS Selection Failure at Node {current_node.id}")
+                break # Stop traversal here
+                # Handle error: Maybe break? Choose randomly from legal_moves if any exist but had no edges?
+                # If legal_moves is not empty, but simulation_edge is None, it implies MCTS hasn't
+                # expanded nodes corresponding to those legal moves yet, or there's a mismatch.
+                # A robust fallback might be to pick a random legal move and hope MCTS expands it next time.
+                # For now, let's break, indicating a likely problem state.
 
             lg.logger_mcts.info(
-                "Selected action %s with Q+U %.4f", simulation_action, max_qu
+                "Selected LEAF action %s with Q+U %.4f", simulation_action, max_qu
             )
 
             # Move to the next node based on the selected edge
             current_node = simulation_edge.out_node
-            breadcrumbs.append(simulation_edge)  # Add the edge taken to the path
+            breadcrumbs.append(simulation_edge)
 
-        lg.logger_mcts.info("Reached leaf node %s", current_node.id)
-        # Return the leaf node found and the path taken
+        lg.logger_mcts.info("Reached leaf node %s or stopped traversal.", current_node.id)
         return current_node, breadcrumbs
 
     def expand_leaf(self, leaf_node, policy_p):

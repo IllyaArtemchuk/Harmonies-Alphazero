@@ -20,7 +20,7 @@ model_config_default: ModelConfigType = {
     "input_channels": INPUT_CHANNELS,  # Channels from create_board_tensor (e.g., 38)
     "cnn_filters": 75,  # Filters in conv/residual blocks (CNN_FILTERS)
     "board_size": BOARD_SIZE,  # Tuple (H, W) of the spatial tensor (e.g., (5, 6))
-    "action_size": ACTION_SIZE,  # Total size of the policy output vector (e.g., 74)
+    "action_size": ACTION_SIZE,  # Total size of the policy output vector (e.g., 143)
     "global_feature_size": GLOBAL_FEATURE_SIZE,  # Size of the global feature vector (e.g., 42)
     "value_head_hidden_dim": 256,  # Size of the hidden layer in the value head's MLP
     "num_res_blocks": 6,  # Number of residual blocks in the CNN body
@@ -36,17 +36,17 @@ training_config_default: TrainingConfigType = {
         else "mps" if torch.backends.mps.is_available() else "cpu"
     ),
     "optimizer_type": "Adam",
-    "learning_rate": 0.002,
+    "learning_rate": 0.001,
     "momentum": 0.9,
     "weight_decay": 0.0001,  # L2 regularization strength
     "value_loss_weight": 0.5,
-    "policy_loss_weight": 0.5,
+    "policy_loss_weight": 1.0,
     "batch_size": 64,
     # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 200,  # MCTS simulations per move
+    "num_simulations": 300,  # MCTS simulations per move
     "cpuct": 1.25,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
@@ -60,7 +60,7 @@ mcts_config_default: MCTSConfigType = {
 }
 
 mcts_config_eval: MCTSConfigType = {
-    "num_simulations": 200,  # MCTS simulations per move
+    "num_simulations": 300,  # MCTS simulations per move
     "cpuct": 1.25,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.1,
@@ -76,8 +76,8 @@ mcts_config_eval: MCTSConfigType = {
 self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 100,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
-    "epochs_per_iter": 1,  # Number of training epochs over the buffer per iteration
-    "num_parallel_games": 4,  # Number of games that will run in parallel
+    "epochs_per_iter": 10,  # Number of training epochs over the buffer per iteration
+    "num_parallel_games": 3,  # Number of games that will run in parallel
     "worker_device": "mps",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
     "checkpoint_folder": "./harmonies_az_run/",  # Folder to save model checkpoints
