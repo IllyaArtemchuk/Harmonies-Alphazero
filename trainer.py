@@ -246,6 +246,12 @@ class Trainer:
                 folder=candidate_checkpoint_folder, filename=resume_filename, iteration=current_iteration_num
             )
 
+            # Save replay buffer at the end of each iteration
+            save_buffer(
+                self.replay_buffer,
+                folder=self.self_play_config["replay_buffer_folder"],
+                filename=self.self_play_config["replay_buffer_filename"]
+            )
 
             # ... (buffer saving, evaluation logic) ...
             if current_iteration_num % eval_frequency == 0 and current_iteration_num > 0:

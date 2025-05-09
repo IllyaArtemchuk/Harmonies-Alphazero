@@ -90,8 +90,6 @@ class MCTS:
             max_qu = -float("inf")
             simulation_edge = None
             simulation_action = None
-            
-            # Dirichlet noise is now applied during root expansion, not here.
 
             # Calculate total visits Ns for the current node's outgoing edges
             ns = 0

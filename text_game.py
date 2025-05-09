@@ -95,11 +95,28 @@ def display_ai_stats(policy_probs, value_pred, game_state: HarmoniesGameState, a
     # Get indices of top N probabilities
     top_n = 5
     if policy_probs is not None and len(policy_probs) > 0:
-        # Ensure policy_probs is a flat array if it's not already
-        if isinstance(policy_probs, (list, tuple)) and len(policy_probs) > 0 and isinstance(policy_probs[0], (list, tuple)):
-            policy_probs = np.array(policy_probs).flatten()
-        elif not isinstance(policy_probs, np.ndarray):
-            policy_probs = np.array(policy_probs)
+        # Ensure policy_probs is a flat numpy array
+        if not isinstance(policy_probs, np.ndarray):
+            try:
+                policy_probs = np.array(policy_probs, dtype=float) # Explicitly cast to float
+            except Exception as e:
+                print(f"  Error converting policy_probs to numpy array: {e}")
+                policy_probs = np.array([]) # Default to empty array on error
+
+        if policy_probs.ndim > 1: # If it's still not flat (e.g. array of lists)
+            try:
+                # Attempt to flatten robustly, e.g. if it became an object array
+                if policy_probs.dtype == 'object':
+                     # This case is tricky, might need specific handling if it occurs
+                     print("  Warning: policy_probs is an object array, attempting to flatten.")
+                     # A simple flatten might not work as expected if it's truly ragged.
+                     # For now, we'll try a standard flatten.
+                     policy_probs = np.concatenate(policy_probs).ravel() if policy_probs.size > 0 else np.array([])
+                else:
+                    policy_probs = policy_probs.flatten()
+            except Exception as e:
+                print(f"  Error flattening policy_probs array: {e}")
+                policy_probs = np.array([])
 
 
         # Check if policy_probs is empty or not 1D after conversion
