@@ -3,6 +3,14 @@ from config import *
 import numpy as np
 import torch
 
+all_q = [q for q, r in VALID_HEXES]
+all_r = [r for q, r in VALID_HEXES]
+
+q_min = min(all_q) # Should be -3
+q_max = max(all_q) # Should be 3
+r_min = min(all_r) # Should be -2
+r_max = max(all_r) # Should be 2
+
 
 def create_state_tensors(game_state):
     return (create_board_tensor(game_state), create_global_features(game_state))
@@ -11,15 +19,11 @@ def create_state_tensors(game_state):
 def create_board_tensor(game_state):
     """
     Creates a spatial tensor representing board state, player, and phase.
-    Output shape: (C, H, W) = (38, 5, 6)
+    Output shape: (C, H, W) = (38, 5, 7)
     """
-    # Define grid boundaries (assuming 5-4-5-4-5 grid)
-    q_min, q_max = -2, 3
-    r_min, r_max = -2, 2
 
-    # Calculate dimensions
-    width = q_max - q_min + 1  # 6
-    height = r_max - r_min + 1  # 5
+    width = q_max - q_min + 1  
+    height = r_max - r_min + 1  
 
     # Base channels: Board tiles (36) + Player (1) + Phase (1) = 38
     num_channels = (len(TILE_TYPES) * 3 * 2) + 1 + 1

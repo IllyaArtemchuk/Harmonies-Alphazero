@@ -1,5 +1,6 @@
 import torch
 from torch import optim, nn
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau # Import schedulers you might use
 from pathlib import Path  # Optional, for cleaner path handling
 from config_types import TrainingConfigType, ModelConfigType
 from loggers import logger_model
@@ -13,6 +14,7 @@ class ModelManager:
         self.training_config = training_config
         self.device = torch.device(training_config["device"])
         print(f"Using device: {self.device}")
+        self.initial_learning_rate = training_config["learning_rate"] 
 
         # Instantiate the actual neural network model
         self.model = AlphaZeroModel(
@@ -32,7 +34,7 @@ class ModelManager:
         if training_config["optimizer_type"] == "Adam":
             self.optimizer = optim.Adam(
                 self.model.parameters(),
-                lr=self.learning_rate,
+                lr=self.initial_learning_rate,
                 weight_decay=training_config["weight_decay"],
             )
         else:
@@ -40,7 +42,32 @@ class ModelManager:
                 self.model.parameters(),
                 lr=self.learning_rate,
                 momentum=training_config["momentum"],
+                weight_decay=training_config["weight_decay"]
             )
+            
+        self.scheduler = None 
+        if training_config.get("use_scheduler", False): 
+            scheduler_type = training_config.get("scheduler_type", "StepLR").lower()
+            if scheduler_type == "steplr":
+                step_size = training_config.get("scheduler_step_size", 30)
+                gamma = training_config.get("scheduler_gamma", 0.5)
+                self.scheduler = StepLR(self.optimizer, step_size=step_size, gamma=gamma)
+                print(f"Initialized StepLR scheduler: step_size={step_size}, gamma={gamma}")
+                logger_model.info(f"Initialized StepLR scheduler: step_size={step_size}, gamma={gamma}")
+            elif scheduler_type == "reducelronplateau":
+                # Example for ReduceLROnPlateau - needs a metric from evaluation
+                # patience = training_config.get("scheduler_patience", 10)
+                # factor = training_config.get("scheduler_factor", 0.1)
+                # self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=factor, patience=patience, verbose=True)
+                # print(f"Initialized ReduceLROnPlateau: patience={patience}, factor={factor}")
+                # logger_model.info(f"Initialized ReduceLROnPlateau: patience={patience}, factor={factor}")
+                print(f"ReduceLROnPlateau scheduler selected but requires metric for step(). Using None for now.")
+                # For AlphaZero, StepLR or MultiStepLR is often simpler as evaluation metric can be noisy.
+            else:
+                print(f"Warning: Unsupported scheduler_type '{scheduler_type}'. No scheduler will be used.")
+        else:
+            print("Learning rate scheduler is disabled.")
+            logger_model.info("Learning rate scheduler is disabled.")
 
         logger_model.info(
             f"Optimizer {training_config.get('optimizer_type', 'Adam')} initialized with LR \
@@ -131,7 +158,7 @@ class ModelManager:
 
         return total_loss.item(), policy_loss.item(), value_loss.item()
 
-    def save_checkpoint(self, folder="checkpoints", filename="checkpoint.pth.tar"):
+    def save_checkpoint(self, folder="checkpoints", filename="checkpoint.pth.tar", iteration=None):
         """Saves model and optimizer state."""
         folder_path = Path(folder)
         folder_path.mkdir(parents=True, exist_ok=True)
@@ -145,6 +172,12 @@ class ModelManager:
             "optimizer_state_dict": self.optimizer.state_dict(),
             # Add other things if needed: epoch, best_loss, etc.
         }
+        
+        if self.scheduler: # Only save scheduler state if it exists
+            state["scheduler_state_dict"] = self.scheduler.state_dict()
+        if iteration is not None:
+            state["iteration"] = iteration # Useful for resuming
+        
         torch.save(state, filepath)
         print(f"Checkpoint saved to {filepath}")
 
@@ -164,16 +197,46 @@ class ModelManager:
 
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            
+            
+            if self.scheduler and "scheduler_state_dict" in checkpoint:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+                print("Scheduler state loaded.")
+            elif self.scheduler:
+                print("WARNING: Scheduler state not found in checkpoint, but scheduler is active. Scheduler starts fresh.")
 
-            # If you saved other states like epoch, load them here
-            # self.start_epoch = checkpoint['epoch']
+            current_lr_in_optimizer = self.optimizer.param_groups[0]['lr']
+            
+            iteration_loaded = checkpoint.get("iteration", 0) # Get saved iteration, default to 0
 
-            print(f"Checkpoint loaded from {filepath}")
-            return True  # Indicate successful load
+            print(f"Checkpoint loaded successfully. Resuming from iteration {iteration_loaded + 1}.")
+            print(f"  Optimizer LR after loading: {current_lr_in_optimizer:.6f}")
+            if self.scheduler:
+                print(f"  Scheduler last_epoch: {self.scheduler.last_epoch}, current LR from scheduler perspective: {self.scheduler.get_last_lr()[0]:.6f}")
+
+            return True, iteration_loaded
         except Exception as e:
             print(f"ERROR: Failed to load checkpoint from {filepath}. Error: {e}")
             print("Starting model from scratch.")
             return False
+        
+    def get_current_lr(self):
+        if self.scheduler:
+            # get_last_lr() returns a list of LRs, one for each param group
+            return self.scheduler.get_last_lr()[0]
+        else:
+            # Fallback if no scheduler, though optimizer LR is the true source
+            return self.optimizer.param_groups[0]['lr']
+        
+    def step_scheduler(self, metric=None): # Metric only needed for schedulers like ReduceLROnPlateau
+        if self.scheduler:
+            if isinstance(self.scheduler, ReduceLROnPlateau):
+                if metric is None:
+                    print("Warning: ReduceLROnPlateau scheduler needs a metric to step, but None provided.")
+                    return
+                self.scheduler.step(metric)
+            else: # For StepLR, MultiStepLR, etc.
+                self.scheduler.step()
 
 
 class AlphaZeroModel(nn.Module):

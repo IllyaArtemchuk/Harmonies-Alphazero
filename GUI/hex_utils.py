@@ -28,17 +28,14 @@ def axial_to_pixel_pointy_topped(q, r, origin_x, origin_y):
     return int(x), int(y)
 
 # --- Drawing Functions ---
-def draw_hexagon_pointy_topped(surface, color, x_center, y_center, border_color=None, border_width=2):
-    """Draws a single pointy-topped hexagon."""
+def draw_hexagon_pointy_topped(surface, color, x_center, y_center, hex_custom_size, border_color=None, border_width=2): # Added hex_custom_size
+    """Draws a single pointy-topped hexagon of a specific size."""
     points = []
     for i in range(6):
-        # For pointy-topped, angles start offset by 30 degrees (e.g., 30, 90, 150, ...)
-        # Or more simply, 0, 60, 120... and then rotate the whole coordinate system effectively.
-        # Let's use the common angle offset method:
-        angle_deg = 60 * i + 30 # +30 to make pointy top
+        angle_deg = 60 * i + 30 
         angle_rad = math.pi / 180 * angle_deg
-        points.append((x_center + HEX_SIZE * math.cos(angle_rad),
-                       y_center + HEX_SIZE * math.sin(angle_rad)))
+        points.append((x_center + hex_custom_size * math.cos(angle_rad), # Use hex_custom_size
+                       y_center + hex_custom_size * math.sin(angle_rad)))# Use hex_custom_size
     pygame.draw.polygon(surface, color, points)
     if border_color:
         pygame.draw.polygon(surface, border_color, points, border_width)

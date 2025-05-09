@@ -39,18 +39,21 @@ training_config_default: TrainingConfigType = {
     "learning_rate": 0.001,
     "momentum": 0.9,
     "weight_decay": 0.0001,  # L2 regularization strength
-    "value_loss_weight": 0.5,
+    "value_loss_weight": 1.0,
     "policy_loss_weight": 1.0,
     "batch_size": 64,
-    # Note: EPOCHS = 1 from original seems to map to NUM_EPOCHS_PER_ITER in self_play_config
+    "use_scheduler": True,              
+    "scheduler_type": "StepLR",         
+    "scheduler_step_size": 30,          
+    "scheduler_gamma": 0.5,            
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 800,  # MCTS simulations per move
-    "cpuct": 1,  # Exploration constant for PUCT
+    "num_simulations": 200,  # MCTS simulations per move
+    "cpuct": 2,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
-    "dirichlet_epsilon": 0.2,
+    "dirichlet_epsilon": 0.4,
     "fpu_value": 0.25,
     # --- Temperature parameter for move selection ---
     "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
@@ -60,8 +63,8 @@ mcts_config_default: MCTSConfigType = {
 }
 
 mcts_config_eval: MCTSConfigType = {
-    "num_simulations": 800,  # MCTS simulations per move
-    "cpuct": 1,  # Exploration constant for PUCT
+    "num_simulations": 200,  # MCTS simulations per move
+    "cpuct": 2,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.1,
     "dirichlet_epsilon": 0,
@@ -74,9 +77,9 @@ mcts_config_eval: MCTSConfigType = {
 }
 
 self_play_config_default: SelfPlayConfigType = {
-    "num_iterations": 100,  # Total number of self-play -> train iterations
+    "num_iterations": 500,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
-    "epochs_per_iter": 20,  # Number of training epochs over the buffer per iteration
+    "epochs_per_iter": 5,  # Number of training epochs over the buffer per iteration
     "num_parallel_games": 3,  # Number of games that will run in parallel
     "worker_device": "mps",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
@@ -118,6 +121,10 @@ test_training_config: TrainingConfigType = {
     "policy_loss_weight": 1.0,
     "batch_size": 4,  # <<< VERY SMALL batch size
     "momentum": 0.9,
+    "use_scheduler": True,              
+    "scheduler_type": "StepLR",         
+    "scheduler_step_size": 30,          
+    "scheduler_gamma": 0.5,     
 }
 
 # --- MCTS Config (Minimal search) ---

@@ -33,7 +33,7 @@ VALID_HEXES = {
 }
 
 AXIAL_DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, -1), (-1, 1)]
-BOARD_SIZE = (5, 6)
+BOARD_SIZE = (5, 7)
 
 
 WATER, PLANT, WOOD, STONE, BUILDING, FIELD = TILE_TYPES

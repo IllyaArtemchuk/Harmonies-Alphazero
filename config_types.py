@@ -1,4 +1,4 @@
-from typing import TypedDict, Tuple, Dict, Literal
+from typing import Optional, TypedDict, Tuple, Dict, Literal
 
 
 # For model_config
@@ -24,6 +24,10 @@ class TrainingConfigType(TypedDict):
     value_loss_weight: float
     policy_loss_weight: float
     batch_size: int
+    use_scheduler: bool    
+    scheduler_type: str   
+    scheduler_step_size: int
+    scheduler_gamma: float
 
 
 # For mcts_config

@@ -193,47 +193,63 @@ class Trainer:
         print(f"  Time taken: {end_time - start_time:.2f} seconds")
 
     def run_training_loop(self):
-        """Executes the main AlphaZero training loop with evaluation."""
         print("============================================")
         print("          STARTING ALPHAZERO TRAINING       ")
         print("============================================")
 
-        num_iterations = self.self_play_config["num_iterations"]
+        num_iterations_config = self.self_play_config["num_iterations"]
         eval_frequency = self.self_play_config["eval_frequency"]
 
-        for iteration in range(num_iterations):
-            print(
-                f"\n=============== ITERATION {iteration+1}/{num_iterations} ==============="
-            )
+        # Try to load candidate model checkpoint to resume (if any)
+        # This also loads optimizer and scheduler state for self.model_manager
+        candidate_checkpoint_folder = self.self_play_config["checkpoint_folder"]
+        # Use a generic "latest" or "resume" checkpoint name for the candidate
+        resume_filename = "latest_candidate.pth.tar"
+        loaded_candidate, self.start_iteration = self.model_manager.load_checkpoint(
+            folder=candidate_checkpoint_folder, filename=resume_filename
+        )
+        if loaded_candidate:
+            print(f"Resuming training from iteration {self.start_iteration + 1}")
+        else:
+            print("Starting training from scratch (no candidate checkpoint found or load failed).")
+            self.start_iteration = 0
 
-            # Use the BEST model for generating self-play data
-            # This is crucial: self-play should always use the strongest agent
-            data_generating_manager = self.best_model_manager
-            # Make sure Trainer.__init__ loads/initializes best_model_manager correctly
 
-            print(f"--- Generating data using model: {self.best_model_filename} ---")
-            # 1. Generate game data using the current *best* model
-            # Make sure execute_self_play_phase uses the right model manager
-            self.execute_self_play_phase(data_generating_manager)
+        for iteration_count in range(self.start_iteration, num_iterations_config):
+            current_iteration_num = iteration_count + 1 # 1-based for display
+            print(f"\n=============== ITERATION {current_iteration_num}/{num_iterations_config} ===============")
 
-            # 2. Train the *candidate* model using data from the buffer
-            self.execute_training_phase()  # Trains self.model_manager
+            current_lr = self.model_manager.get_current_lr()
+            print(f"--- Starting Iteration with LR: {current_lr:.7f} ---")
+            lg.logger_main.info(f"Iteration {current_iteration_num} | Current LR: {current_lr:.7f}")
 
-            # 3. Save *candidate* model checkpoint periodically
-            checkpoint_folder = self.self_play_config["checkpoint_folder"]
-            candidate_filename = f"iteration_{iteration+1:04d}.pth.tar"
+            # Data generation uses the best_model_manager
+            data_gen_mgr = self.best_model_manager
+            print(f"--- Generating data using best model: {self.best_model_filename} ---")
+            self.execute_self_play_phase(data_gen_mgr)
+
+            # Training uses self.model_manager (the candidate)
+            self.execute_training_phase()
+
+            # Step the scheduler for self.model_manager (candidate)
+            # For ReduceLROnPlateau, you'd pass a metric like validation loss/win_rate here
+            # For StepLR, no metric is needed.
+            self.model_manager.step_scheduler() # Pass metric if using ReduceLROnPlateau
+            new_lr = self.model_manager.get_current_lr()
+            if abs(new_lr - current_lr) > 1e-9: # Check if LR actually changed
+                 print(f"--- LR updated by scheduler to: {new_lr:.7f} ---")
+                 lg.logger_main.info(f"LR updated by scheduler to: {new_lr:.7f}")
+
+            # Save candidate model checkpoint (self.model_manager)
+            # This will also save the updated scheduler state
             self.model_manager.save_checkpoint(
-                folder=checkpoint_folder, filename=candidate_filename
+                folder=candidate_checkpoint_folder, filename=resume_filename, iteration=current_iteration_num
             )
 
-            # 4. Save replay buffer periodically (optional)
-            buffer_folder = self.self_play_config["replay_buffer_folder"]
-            if (iteration + 1) % 5 == 0:
-                save_buffer(self.replay_buffer, folder=buffer_folder)
 
-            # 5. Evaluation Phase
-            if (iteration + 1) % eval_frequency == 0:
-                self.evaluate_model()  # Compares self.model_manager vs self.best_model_manager
+            # ... (buffer saving, evaluation logic) ...
+            if current_iteration_num % eval_frequency == 0 and current_iteration_num > 0:
+                self.evaluate_model() # This updates self.best_model_manager if candidate is better
 
         print("\n============================================")
         print("             TRAINING COMPLETE             ")
@@ -317,19 +333,21 @@ class Trainer:
         lg.logger_main.info( f"  Results: Candidate={candidate_wins}, Best={best_wins}, Draws/Errors={draws}")
         lg.logger_main.info(f"  Candidate Win Rate (vs Best, excluding draws): {win_rate:.3f}")
         # Check if the candidate model is significantly better
-        if win_rate > win_threshold:
-            print(f"  Candidate model passed threshold ({win_threshold:.2f})!")
-            print(f"  Updating best model checkpoint...")
-            lg.logger_main.info(f"  Candidate model passed threshold ({win_threshold:.2f})!")
-            # Save the current model's weights AS the new best model
-            self.model_manager.save_checkpoint(
-                folder=checkpoint_folder, filename=self.best_model_filename
-            )
-            # Update the best_model_manager in memory to match
-            self.best_model_manager.load_checkpoint(  # type: ignore
-                folder=checkpoint_folder, filename=self.best_model_filename
-            )
-            print("  Best model updated.")
+        if win_rate > win_threshold: # (candidate_wins / total_non_draws)
+                print(f"  Candidate model passed threshold ({win_threshold:.2f})!")
+                print(f"  Updating best model checkpoint to '{self.best_model_filename}'...")
+                lg.logger_main.info(f"  Candidate model passed threshold ({win_threshold:.2f})!")
+                # Save the current candidate model's weights AS the new best model
+                self.model_manager.save_checkpoint(
+                    folder=self.self_play_config["checkpoint_folder"],
+                    filename=self.best_model_filename,
+                    iteration=self.start_iteration + (self.self_play_config["num_iterations"] - self.start_iteration) # A bit hacky for iter num here
+                )
+                # Update the best_model_manager in memory to match
+                self.best_model_manager.load_checkpoint( # type: ignore
+                    folder=self.self_play_config["checkpoint_folder"], filename=self.best_model_filename
+                )
+                print("  Best model updated.")
         else:
             print(
                 f"  Candidate model did not pass threshold ({win_threshold:.2f}). Best model remains unchanged."
