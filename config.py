@@ -67,13 +67,12 @@ mcts_config_eval: MCTSConfigType = {
     "cpuct": 2,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.1,
-    "dirichlet_epsilon": 0,
+    "dirichlet_epsilon": 0, # No noise for eval
     "fpu_value": 0.25,
     # --- Temperature parameter for move selection ---
-    "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
-    # Before this turn, visits^(1/tau) is used, tau=1 usually.
+    "turns_until_tau0": 0,  # Turn after which move selection becomes deterministic FOR EVAL
     "action_size": model_config_default["action_size"],
-    "testing": False,
+    "testing": True, # Ensure eval is deterministic
 }
 
 self_play_config_default: SelfPlayConfigType = {
@@ -135,9 +134,8 @@ test_mcts_config: MCTSConfigType = {
     "dirichlet_epsilon": 0.0,  # <<< DISABLE root noise for simplicity in test run
     "fpu_value": 0.25,
     "turns_until_tau0": 0,  # <<< Makes move selection greedy immediately (tau=0)
-    # Add eval_mode flag if get_best_action_and_pi supports it
     "action_size": ACTION_SIZE,
-    "testing": True,
+    "testing": True, # Ensure test MCTS is deterministic for self-play like tests
 }
 
 test_mcts_config_eval: MCTSConfigType = {
@@ -149,7 +147,7 @@ test_mcts_config_eval: MCTSConfigType = {
     "turns_until_tau0": 0,  # <<< Makes move selection greedy immediately (tau=0)
     # Add eval_mode flag if get_best_action_and_pi supports it
     "action_size": ACTION_SIZE,
-    "testing": True,
+    "testing": True, # Ensure test eval is deterministic
 }
 
 # --- Self-Play Config (Minimal execution) ---

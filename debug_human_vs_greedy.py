@@ -214,6 +214,7 @@ def display_mcts_analysis(az_model_manager: ModelManager, mcts_config: MCTSConfi
     # --- Run MCTS Search ---
     print(f"Running MCTS ({mcts_config.get('num_simulations', '?')} simulations)...")
     start_time = time.time()
+    game_move_number_for_analysis = 0 # Or derive from game_state if possible, for now 0
     try:
         # Make sure MCTS config has correct action size
         mcts_config['action_size'] = az_model_manager.model_config['action_size']
@@ -222,7 +223,8 @@ def display_mcts_analysis(az_model_manager: ModelManager, mcts_config: MCTSConfi
         mcts_chosen_action, mcts_pi_target = get_best_action_and_pi(
             game_state_to_analyze.clone(), # IMPORTANT: Pass a clone!
             az_model_manager,
-            mcts_config # Pass the specific config (e.g., mcts_config_eval)
+            mcts_config, # Pass the specific config (e.g., mcts_config_eval)
+            game_move_number_for_analysis # Pass a move number
         )
     except Exception as e:
         print(f"  Error during MCTS execution: {e}")

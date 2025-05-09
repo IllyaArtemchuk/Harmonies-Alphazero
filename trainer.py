@@ -378,6 +378,7 @@ class Trainer:
             if first_player == 0
             else {0: best_manager, 1: candidate_manager}
         )
+        game_move_count = 0 # Initialize for eval game
 
         while not game.is_game_over():
             current_player_idx = game.get_current_player()
@@ -390,7 +391,7 @@ class Trainer:
                 # We might need a slightly different config or flag in get_best_action_and_pi
                 # For now, assume get_best_action_and_pi uses greedy selection when called here
                 best_action, _ = get_best_action_and_pi(
-                    game.clone(), current_player_manager, eval_config
+                    game.clone(), current_player_manager, eval_config, game_move_count # Pass game_move_count
                 )
             except Exception as e:
                 print(
@@ -411,6 +412,7 @@ class Trainer:
                     f"ERROR during apply_move in EVALUATION game: {e}.\nAction: {best_action}"
                 )
                 return 0  # Treat error as a draw
+            game_move_count += 1 # Increment for eval game
 
         final_outcome = game.get_game_outcome()  # 1 if P0 wins, -1 if P1 wins, 0 Draw
         if final_outcome is None:
@@ -455,6 +457,7 @@ def self_play_worker(args):
     # --- 2. Simulate one game ---
     game = HarmoniesGameState()
     game_history = []
+    game_move_count = 0 # Initialize game move counter
 
     while not game.is_game_over():
         current_player_idx = game.get_current_player()
@@ -468,7 +471,7 @@ def self_play_worker(args):
             state_representation = state_tensors  # Store the tuple
 
             best_action, pi_target = get_best_action_and_pi(
-                game.clone(), local_model_manager, mcts_config  # Use the local manager
+                game.clone(), local_model_manager, mcts_config, game_move_count # Pass game_move_count
             )
         except Exception as e:
             print(f"WORKER ERROR: Exception during MCTS: {e}\nState:\n{game}")
@@ -496,6 +499,8 @@ def self_play_worker(args):
                 f"WORKER ERROR: Exception during apply_move: {e}. Aborting game.\nAction: {best_action}"
             )
             return []
+        
+        game_move_count += 1 # Increment game_move_count
 
     final_outcome = game.get_game_outcome()
     if final_outcome is None:

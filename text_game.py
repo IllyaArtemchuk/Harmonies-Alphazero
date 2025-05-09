@@ -164,6 +164,7 @@ if __name__ == "__main__":
     ai_player_id = 1 - human_player_id
     print(f"You are Player {human_player_id}. AI is Player {ai_player_id}.")
 
+    game_move_count = 0 # Initialize game move counter
     # 3. Main Game Loop
     while not game.is_game_over():
         current_player = game.get_current_player()
@@ -225,7 +226,8 @@ if __name__ == "__main__":
             chosen_action, mcts_pi_target = get_best_action_and_pi(
                 game.clone(), # Pass a clone for MCTS
                 ai_model_manager,
-                ai_mcts_config
+                ai_mcts_config,
+                game_move_count # Pass the current game move count
             )
             if chosen_action is None:
                 print("AI failed to choose an action! Game ending.")
@@ -245,6 +247,8 @@ if __name__ == "__main__":
             import traceback
             traceback.print_exc()
             break # End game on error
+        
+        game_move_count +=1 # Increment after a successful move by either player
 
     # 4. Game Over
     print("\n========== GAME OVER ==========")

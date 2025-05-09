@@ -22,7 +22,7 @@ def run_one_game_for_profiling(model_manager, mcts_config, self_play_config):
     lg.logger_main.info("--- Starting Single Game Simulation for Profiling ---")
     game = HarmoniesGameState() 
     game_history = [] # We don't need to store history for profiling usually, but keep logic
-    game_turn = 0
+    game_turn_counter = 0 
 
     while not game.is_game_over():
         current_player_idx = game.get_current_player()
@@ -39,15 +39,15 @@ def run_one_game_for_profiling(model_manager, mcts_config, self_play_config):
                  'action_size': self_play_config['action_size'],
                  'num_hexes': self_play_config['num_hexes'],
                  'coordinate_to_index_map': self_play_config['coordinate_to_index_map'],
-                 'eval_mode': False 
             })
-            current_config['temperature'] = 1.0 if game_turn < mcts_config['turns_until_tau0'] else 0.0
+
 
             # Run MCTS using the *passed* model_manager
             best_action, pi_target = get_best_action_and_pi(
                 game.clone(), 
                 model_manager, # Use the manager directly
-                current_config
+                current_config, # This is mcts_config with some additions
+                game_turn_counter 
             ) 
         except Exception as e:
             lg.logger_main.error(f"PROFILING ERROR: Exception during MCTS: {e}", exc_info=True)
@@ -62,7 +62,7 @@ def run_one_game_for_profiling(model_manager, mcts_config, self_play_config):
 
         try:
             game = game.apply_move(best_action) 
-            game_turn += 0.5
+            game_turn_counter += 1 # Increment after a full move (both players or one action leading to next state)
         except Exception as e:
             lg.logger_main.error(f"PROFILING ERROR: Exception during apply_move: {e}. Action: {best_action}", exc_info=True)
             return [] 

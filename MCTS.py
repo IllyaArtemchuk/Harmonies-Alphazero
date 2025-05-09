@@ -90,60 +90,39 @@ class MCTS:
             max_qu = -float("inf")
             simulation_edge = None
             simulation_action = None
-            # Add Dirichlet noise at the root for exploration
-            if current_node == self.root:
-                epsilon = self.mcts_config["dirichlet_epsilon"]
-                nu = np.random.dirichlet(
-                    [self.mcts_config["dirichlet_alpha"]] * len(current_node.edges)
-                )
-            else:
-                epsilon = 0
-                nu = [0] * len(
-                    current_node.edges
-                )  # Placeholder, only used if epsilon > 0
+            
+            # Dirichlet noise is now applied during root expansion, not here.
+
             # Calculate total visits Ns for the current node's outgoing edges
             ns = 0
             for edge in current_node.edges.values():
                 ns += edge.stats["N"]
 
             sqrt_ns = np.sqrt(max(1.0, ns)) # Avoid sqrt(0)
-            edge_index = 0
+            
             # Select the edge with the highest PUCT score
-            # Use items() to get action and edge, enumerate for nu index
             for action, edge in current_node.edges.items():
-
                 if action in legal_moves_set:
-                    # PUCT calculation
-                    # Use edge.stats['P'] which is the prior from the network
-                    prior_p = edge.stats['P']
+                    prior_p = edge.stats['P'] # This P is now potentially noisy if it was the root
 
-                    # Apply optional Dirichlet noise to the prior term
-                    noisy_prior = (1 - epsilon) * prior_p + epsilon * nu[edge_index]
-
+                    # PUCT calculation using the (potentially pre-noised) prior_p
                     u = (
                         self.mcts_config["cpuct"]
-                        * noisy_prior
+                        * prior_p 
                         * sqrt_ns
                         / (1 + edge.stats["N"])
                     )
 
-                    # Get Q value (handle FPU if desired - Q is 0 for N=0 here)
-                    q = edge.stats["Q"] # Q is 0 if N is 0
+                    q = edge.stats["Q"] 
 
-                    # --- Optional: Log PUCT details ---
-                    lg.logger_mcts.debug(f"  Action: {action}, Legal: Yes, Q: {q:.3f}, N: {edge.stats['N']}, P: {prior_p:.3f}, NoisyP: {noisy_prior:.3f}, U: {u:.3f}, Q+U: {q+u:.3f}")
-
+                    lg.logger_mcts.debug(f"  Action: {action}, Legal: Yes, Q: {q:.3f}, N: {edge.stats['N']}, P(prior): {prior_p:.3f}, U: {u:.3f}, Q+U: {q+u:.3f}")
 
                     if q + u > max_qu:
                         max_qu = q + u
-                        simulation_action = action # Store the action
-                        simulation_edge = edge     # Store the edge object
+                        simulation_action = action 
+                        simulation_edge = edge     
                 else:
-                    # Log actions that exist as edges but are not currently legal (for debugging)
                     lg.logger_mcts.debug(f"  Action: {action}, Legal: No, Skipping PUCT.")
-
-                edge_index += 1 # Increment noise index regardless of legality? Or only for legal? Typically applied across all existing edge priors.
-
 
             if simulation_edge is None:
                 # This can happen if the node has edges, but *none* of them correspond to
@@ -292,14 +271,15 @@ class MCTS:
         return self.root.edges
 
 
-def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigType):
+def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigType, game_move_number: int):
     """
     Runs MCTS simulation to determine the best move from the current state.
 
     Args:
         game_state: The current HarmoniesGameState object.
         model_manager: Your ModelManager instance containing the NN and predict method.
-        config: Dictionary with hyperparameters (MCTS_SIMS, cpuct, ACTION_SIZE, etc.).
+        mcts_config: Dictionary with hyperparameters (MCTS_SIMS, cpuct, ACTION_SIZE, etc.).
+        game_move_number (int): The number of moves already made in the current game (0-indexed).
 
     Returns:
         tuple: (chosen_move, pi_target)
@@ -321,12 +301,37 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
             board_tensor, global_features_tensor = create_state_tensors(leaf_node.state)
 
             # Predict policy and value using the NN
-            policy_p, value_v = model_manager.predict(
+            policy_p_raw, value_v = model_manager.predict(
                 board_tensor, global_features_tensor
             )
 
-            # Expand the node using the NN's policy output
-            mcts.expand_leaf(leaf_node, policy_p)
+            # Apply Dirichlet noise to root's policy priors if it's the root and in training mode
+            current_policy_for_expansion = policy_p_raw
+            if leaf_node == mcts.root and not mcts_config.get("testing", False):
+                legal_moves_root = leaf_node.state.get_legal_moves()
+                if legal_moves_root: # Only apply if there are legal moves
+                    policy_p_noisy = policy_p_raw.copy() # Work on a copy
+                    
+                    num_legal_root_moves = len(legal_moves_root)
+                    noise_values = np.random.dirichlet(
+                        [mcts_config["dirichlet_alpha"]] * num_legal_root_moves
+                    )
+                    
+                    epsilon = mcts_config["dirichlet_epsilon"]
+                    
+                    for i, move in enumerate(legal_moves_root):
+                        action_idx = get_action_index(move) # Map game move -> flat policy index
+                        if 0 <= action_idx < len(policy_p_noisy):
+                            policy_p_noisy[action_idx] = (1 - epsilon) * policy_p_noisy[action_idx] + epsilon * noise_values[i]
+                        else:
+                            lg.logger_mcts.warning(f"Dirichlet noise: Action index {action_idx} for move {move} out of bounds for policy vector size {len(policy_p_noisy)}.")
+                    current_policy_for_expansion = policy_p_noisy
+                    lg.logger_mcts.debug(f"Applied Dirichlet noise to root priors.")
+                else:
+                    lg.logger_mcts.debug(f"Root node has no legal moves, skipping Dirichlet noise.")
+
+            # Expand the node using the (potentially noisy) policy output
+            mcts.expand_leaf(leaf_node, current_policy_for_expansion)
         else:
             # Game is over at the leaf, get the actual outcome
             outcome = leaf_node.state.get_game_outcome()  # Returns 1, -1, or 0
@@ -389,19 +394,42 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
                 pi_target[action_index] = uniform_prob
 
     # 4. Choose the Move to Play
-    # Deterministic: Choose move with highest visit count
-    # TODO: Implement temperature parameter for exploration if needed, especially early in training
     best_action = None
     max_visits = -1
-    for action, visits in visit_counts:
-        if visits > max_visits:
-            max_visits = visits
-            best_action = action
+
+    # Check if we are in the exploratory phase (training, not testing, and within turn limit)
+    is_exploratory_phase = (
+        not mcts_config.get("testing", False) and 
+        game_move_number < mcts_config["turns_until_tau0"]
+    )
+
+    if is_exploratory_phase:
+        lg.logger_mcts.info(f"MCTS: Exploratory move selection (Game Move #{game_move_number}, tau=1)")
+        if total_visits > 0:
+            # Temperature-based sampling (tau=1, so probs are proportional to visit counts)
+            actions = [vc[0] for vc in visit_counts]
+            probabilities = np.array([vc[1] for vc in visit_counts], dtype=float) / total_visits
+            if len(actions) > 0:
+                 best_action = actions[np.random.choice(len(actions), p=probabilities)]
+            else: # Should not happen if total_visits > 0 and visit_counts populated
+                lg.logger_mcts.warning("MCTS: No actions in visit_counts despite total_visits > 0. Falling back.")
+                best_action = None # Will trigger fallback logic below
+        else: # No visits, should have been handled by pi_target fallback earlier, but as safety
+            best_action = None # Will trigger fallback logic below
+    else:
+        lg.logger_mcts.info(f"MCTS: Greedy move selection (Game Move #{game_move_number} or Testing Mode)")
+        # Deterministic: Choose move with highest visit count
+        for action, visits in visit_counts:
+            if visits > max_visits:
+                max_visits = visits
+                best_action = action
 
     if best_action is None:
         lg.logger_mcts.warning(
-            "MCTS could not select a best action (max_visits = %d). Falling back to random.",
+            "MCTS could not select a best action (exploratory: %s, max_visits/total_visits: %d/%d). Falling back to random from legal moves.",
+            is_exploratory_phase,
             max_visits,
+            total_visits
         )
         legal_moves = game_state.get_legal_moves()
         if legal_moves:
@@ -410,9 +438,6 @@ def get_best_action_and_pi(game_state, model_manager, mcts_config: MCTSConfigTyp
             lg.logger_mcts.error(
                 "MCTS failed, and no legal moves exist. Game should have ended."
             )
-            # This state suggests an issue earlier in the game logic or MCTS.
-            # Depending on robustness needs, you might return None or raise an Exception.
-            # For now, let's return None and let the caller handle it.
             return None, pi_target  # Indicate failure
 
     return best_action, pi_target
