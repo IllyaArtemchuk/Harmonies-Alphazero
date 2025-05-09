@@ -189,7 +189,7 @@ class ModelManager:
             print(
                 f"WARNING: No checkpoint found at {filepath} - starting model from scratch."
             )
-            return False
+            return False, 0
 
         try:
             # Load checkpoint onto the correct device
@@ -218,7 +218,7 @@ class ModelManager:
         except Exception as e:
             print(f"ERROR: Failed to load checkpoint from {filepath}. Error: {e}")
             print("Starting model from scratch.")
-            return False
+            return False, 0
         
     def get_current_lr(self):
         if self.scheduler:
