@@ -42,6 +42,7 @@ if __name__ == "__main__":
     az_arguments = (
         best_model_mgr,  # The loaded best model manager
         mcts_eval_config,  # Config for deterministic MCTS
+        0
     )
 
     # Greedy agent doesn't need extra args beyond game_state

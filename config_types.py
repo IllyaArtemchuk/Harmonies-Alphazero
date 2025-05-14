@@ -28,6 +28,8 @@ class TrainingConfigType(TypedDict):
     scheduler_type: str   
     scheduler_step_size: int
     scheduler_gamma: float
+    force_lr_reset_on_load: Optional[bool]
+    new_forced_lr: Optional[float]
 
 
 # For mcts_config

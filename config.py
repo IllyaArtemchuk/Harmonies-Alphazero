@@ -18,12 +18,12 @@ from config_types import (
 model_config_default: ModelConfigType = {
     # Parameters defining the NN architecture passed to AlphaZeroModel.__init__
     "input_channels": INPUT_CHANNELS,  # Channels from create_board_tensor (e.g., 38)
-    "cnn_filters": 75,  # Filters in conv/residual blocks (CNN_FILTERS)
+    "cnn_filters": 128,  # Filters in conv/residual blocks (CNN_FILTERS)
     "board_size": BOARD_SIZE,  # Tuple (H, W) of the spatial tensor (e.g., (5, 6))
     "action_size": ACTION_SIZE,  # Total size of the policy output vector (e.g., 143)
     "global_feature_size": GLOBAL_FEATURE_SIZE,  # Size of the global feature vector (e.g., 42)
     "value_head_hidden_dim": 256,  # Size of the hidden layer in the value head's MLP
-    "num_res_blocks": 6,  # Number of residual blocks in the CNN body
+    "num_res_blocks": 8,  # Number of residual blocks in the CNN body
     "policy_head_conv_filters": 2,  # Filters in the policy head's initial 1x1 conv
     "value_head_conv_filters": 1,  # Filters in the value head's initial 1x1 conv
 }
@@ -45,18 +45,20 @@ training_config_default: TrainingConfigType = {
     "use_scheduler": True,              
     "scheduler_type": "StepLR",         
     "scheduler_step_size": 30,          
-    "scheduler_gamma": 0.5,            
+    "scheduler_gamma": 0.5,
+    "force_lr_reset_on_load": True,
+    "new_forced_lr": 0.000125
 }
 
 mcts_config_default: MCTSConfigType = {
-    "num_simulations": 200,  # MCTS simulations per move
+    "num_simulations": 400,  # MCTS simulations per move (Increased from 200)
     "cpuct": 2,  # Exploration constant for PUCT
     # --- Parameters for Dirichlet noise added to root priors during self-play ---
     "dirichlet_alpha": 0.4,
-    "dirichlet_epsilon": 0.4,
+    "dirichlet_epsilon": 0.25, # Reduced from 0.4
     "fpu_value": 0.25,
     # --- Temperature parameter for move selection ---
-    "turns_until_tau0": 10,  # Turn after which move selection becomes deterministic
+    "turns_until_tau0": 15,  # Turn after which move selection becomes deterministic
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
     "action_size": model_config_default["action_size"],
     "testing": False,
@@ -78,7 +80,7 @@ mcts_config_eval: MCTSConfigType = {
 self_play_config_default: SelfPlayConfigType = {
     "num_iterations": 500,  # Total number of self-play -> train iterations
     "num_games_per_iter": 25,  # Number of games generated per iteration
-    "epochs_per_iter": 5,  # Number of training epochs over the buffer per iteration
+    "epochs_per_iter": 2,  # Number of training epochs over the buffer per iteration
     "num_parallel_games": 3,  # Number of games that will run in parallel
     "worker_device": "mps",  # Device used for the self play phase by the workers
     "replay_buffer_size": 50000,  # Max number of (s, pi, z) examples stored
@@ -87,9 +89,9 @@ self_play_config_default: SelfPlayConfigType = {
     "replay_buffer_filename": "replay_buffer.pkl",
     "best_model_filename": "best_model.pth.tar",
     # --- Evaluation Settings (run periodically, e.g., after N iterations) ---
-    "eval_episodes": 20,  # Number of games to play between current and best model
-    "eval_win_rate_threshold": 0.55,  # Win rate needed for new model to become the 'best'
-    "eval_frequency": 10,  # How often evaluation is done (every N interations)
+    "eval_episodes": 30,  # Number of games to play between current and best model (Increased from 20)
+    "eval_win_rate_threshold": 0.51,  # Win rate needed for new model to become the 'best' (Decreased from 0.51)
+    "eval_frequency": 5,  # How often evaluation is done (every N interations)
     # --- Info needed by helper functions ---
     "action_size": model_config_default["action_size"],
     "num_hexes": NUM_HEXES,
@@ -124,6 +126,8 @@ test_training_config: TrainingConfigType = {
     "scheduler_type": "StepLR",         
     "scheduler_step_size": 30,          
     "scheduler_gamma": 0.5,     
+    "force_lr_reset_on_load": False,
+    "new_forced_lr": 0.000125
 }
 
 # --- MCTS Config (Minimal search) ---

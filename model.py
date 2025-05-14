@@ -206,13 +206,48 @@ class ModelManager:
                 print("WARNING: Scheduler state not found in checkpoint, but scheduler is active. Scheduler starts fresh.")
 
             current_lr_in_optimizer = self.optimizer.param_groups[0]['lr']
-            
             iteration_loaded = checkpoint.get("iteration", 0) # Get saved iteration, default to 0
 
+            # --- BEGIN ADDITION FOR LR RESET ---
+            if self.training_config.get("force_lr_reset_on_load", False) and iteration_loaded >= 0 : # iteration_loaded >= 0 ensures it's a valid resume
+                forced_lr = self.training_config.get("new_forced_lr")
+                if forced_lr is not None and forced_lr > 0:
+                    print(f"FORCE LR RESET: Overriding loaded LR {current_lr_in_optimizer:.7f} with {forced_lr:.7f}")
+                    logger_model.info(f"FORCE LR RESET: Overriding loaded LR {current_lr_in_optimizer:.7f} with {forced_lr:.7f}")
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = forced_lr
+                    current_lr_in_optimizer = forced_lr # Update for logging
+
+                    if self.scheduler:
+                        print("FORCE LR RESET: Re-initializing scheduler state.")
+                        logger_model.info("FORCE LR RESET: Re-initializing scheduler state.")
+                        scheduler_type = self.training_config.get("scheduler_type", "StepLR").lower()
+                        if scheduler_type == "steplr":
+                            step_size = self.training_config.get("scheduler_step_size", 30)
+                            gamma = self.training_config.get("scheduler_gamma", 0.5)
+                            
+                            # Calculate the 'last_epoch' for the scheduler constructor
+                            # to make the new LR persist for a full step_size cycle from this point.
+                            # iteration_loaded is the number of *completed* iterations.
+                            constructor_last_epoch = iteration_loaded - (iteration_loaded % step_size)
+                            
+                            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                                self.optimizer, 
+                                step_size=step_size, 
+                                gamma=gamma,
+                                last_epoch=constructor_last_epoch 
+                            )
+                            print(f"StepLR scheduler re-initialized. Optimizer LR: {self.optimizer.param_groups[0]['lr']:.7f}, Scheduler constructor last_epoch: {constructor_last_epoch}, actual internal scheduler.last_epoch: {self.scheduler.last_epoch}.")
+                            logger_model.info(f"StepLR scheduler re-initialized. Optimizer LR: {self.optimizer.param_groups[0]['lr']:.7f}, Scheduler constructor last_epoch: {constructor_last_epoch}, actual internal scheduler.last_epoch: {self.scheduler.last_epoch}.")
+                        else:
+                            logger_model.warning(f"Warning: Scheduler reset for type '{scheduler_type}' might not be fully restoring equivalent state beyond StepLR.")
+                            print(f"Warning: Scheduler reset for type '{scheduler_type}' might not be fully restoring equivalent state beyond StepLR.")
+            # --- END ADDITION FOR LR RESET ---
+
             print(f"Checkpoint loaded successfully. Resuming from iteration {iteration_loaded + 1}.")
-            print(f"  Optimizer LR after loading: {current_lr_in_optimizer:.6f}")
+            print(f"  Optimizer LR after loading (and potential reset): {current_lr_in_optimizer:.7f}")
             if self.scheduler:
-                print(f"  Scheduler last_epoch: {self.scheduler.last_epoch}, current LR from scheduler perspective: {self.scheduler.get_last_lr()[0]:.6f}")
+                print(f"  Scheduler last_epoch: {self.scheduler.last_epoch}, current LR from scheduler perspective: {self.scheduler.get_last_lr()[0]:.7f}")
 
             return True, iteration_loaded
         except Exception as e:
