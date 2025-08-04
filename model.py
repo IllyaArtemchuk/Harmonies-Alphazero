@@ -4,17 +4,21 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau # Import schedule
 from pathlib import Path  # Optional, for cleaner path handling
 from config_types import TrainingConfigType, ModelConfigType
 from loggers import logger_model
+from typing import Optional
+import numpy as np
 
 
 class ModelManager:
     def __init__(
-        self, model_config: ModelConfigType, training_config: TrainingConfigType
+        self, model_config: ModelConfigType, training_config: TrainingConfigType,
+        metrics_tracker: Optional['TrainingMetrics'] = None
     ):
         self.model_config = model_config
         self.training_config = training_config
         self.device = torch.device(training_config["device"])
         print(f"Using device: {self.device}")
-        self.initial_learning_rate = training_config["learning_rate"] 
+        self.initial_learning_rate = training_config["learning_rate"]
+        self.metrics_tracker = metrics_tracker 
 
         # Instantiate the actual neural network model
         self.model = AlphaZeroModel(
@@ -155,6 +159,25 @@ class ModelManager:
         # Backward pass and optimization
         total_loss.backward()
         self.optimizer.step()
+        
+        # Log metrics if tracker is available
+        if self.metrics_tracker:
+            losses = {
+                'total': total_loss.item(),
+                'policy': policy_loss.item(),
+                'value': value_loss.item()
+            }
+            self.metrics_tracker.log_training_step(losses, batch_idx=0)
+            
+            # Log learning rate
+            current_lr = self.optimizer.param_groups[0]['lr']
+            self.metrics_tracker.log_learning_rate(current_lr)
+            
+            # Calculate and log policy entropy
+            policy_probs = torch.softmax(policy_logits, dim=1)
+            entropy = -(policy_probs * torch.log(policy_probs + 1e-8)).sum(dim=1)
+            avg_entropy = entropy.mean().item()
+            self.metrics_tracker.log_policy_entropy([avg_entropy])
 
         return total_loss.item(), policy_loss.item(), value_loss.item()
 

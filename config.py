@@ -1,18 +1,26 @@
 import torch
-from constants import (
+from game_config import (
     ACTION_SIZE,
-    BOARD_SIZE,
-    INPUT_CHANNELS,
-    GLOBAL_FEATURE_SIZE,
-    coordinate_to_index_map,
-    NUM_HEXES,
+    BOARD_TENSOR_SHAPE,
+    GLOBAL_FEATURES_SIZE as GLOBAL_FEATURE_SIZE,
 )
+# For Harmonies-specific configs that might still be needed
+try:
+    from constants import coordinate_to_index_map, NUM_HEXES
+except ImportError:
+    coordinate_to_index_map = {}
+    NUM_HEXES = 0
+
 from config_types import (
     TrainingConfigType,
     ModelConfigType,
     MCTSConfigType,
     SelfPlayConfigType,
 )
+
+# Extract board dimensions from tensor shape
+INPUT_CHANNELS = BOARD_TENSOR_SHAPE[0]
+BOARD_SIZE = (BOARD_TENSOR_SHAPE[1], BOARD_TENSOR_SHAPE[2])
 
 
 model_config_default: ModelConfigType = {

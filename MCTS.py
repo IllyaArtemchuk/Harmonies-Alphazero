@@ -1,6 +1,6 @@
 import numpy as np
 from config import *
-from process_game_state import create_state_tensors, get_action_index
+from game_config import create_state_tensors, get_action_index
 import random
 import loggers as lg
 

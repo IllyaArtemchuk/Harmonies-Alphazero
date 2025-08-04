@@ -1,0 +1,38 @@
+"""
+Configuration overrides for Connect 4 training.
+These values are optimized for the simpler Connect 4 game.
+"""
+
+from config import (
+    model_config_default,
+    training_config_default,
+    mcts_config_default,
+    self_play_config_default
+)
+
+# Create Connect 4 specific configurations by copying and modifying defaults
+connect4_model_config = model_config_default.copy()
+connect4_model_config.update({
+    "cnn_filters": 64,  # Reduced from 128 - Connect 4 is simpler
+    "num_res_blocks": 4,  # Reduced from 8 - Connect 4 needs less depth
+    "value_head_hidden_dim": 128,  # Reduced from 256
+})
+
+connect4_training_config = training_config_default.copy()
+connect4_training_config.update({
+    "learning_rate": 0.001,  # Good starting point
+    "batch_size": 32,  # Smaller batch size for faster updates
+})
+
+connect4_mcts_config = mcts_config_default.copy()
+connect4_mcts_config.update({
+    "num_simulations": 200,  # Reduced from default - Connect 4 has smaller game tree
+    "cpuct": 1.0,  # May need tuning
+})
+
+connect4_self_play_config = self_play_config_default.copy()
+connect4_self_play_config.update({
+    "games_per_iteration": 100,  # More games since they're faster
+    "checkpoint_folder": "./checkpoints_connect4/",
+    "replay_buffer_folder": "./buffer_connect4/",
+})

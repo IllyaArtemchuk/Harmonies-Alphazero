@@ -5,8 +5,7 @@ from multiprocessing import Pool, cpu_count
 import torch
 from tqdm import tqdm
 from model import ModelManager
-from harmonies_engine import HarmoniesGameState
-from process_game_state import create_state_tensors
+from game_config import GameState, create_state_tensors
 from MCTS import get_best_action_and_pi
 from buffer import load_buffer, save_buffer, ReplayBufferDataset
 from config_types import (
@@ -16,6 +15,8 @@ from config_types import (
 )
 from config import mcts_config_eval, test_mcts_config_eval
 import loggers as lg
+from training_metrics import TrainingMetrics, GameMetrics, Connect4Metrics
+import numpy as np
 
 
 class Trainer:
@@ -25,6 +26,8 @@ class Trainer:
         mcts_config: MCTSConfigType,
         self_play_config: SelfPlayConfigType,
         training_config: TrainingConfigType,
+        enable_metrics: bool = True,
+        experiment_name: str = None,
     ):
         """
         Initializes the AlphaZero Trainer.
@@ -34,12 +37,22 @@ class Trainer:
             mcts_config (dict): Configuration for MCTS search.
             self_play_config (dict): Configuration for self-play loop.
             training_config (dict): Configuration for NN training.
+            enable_metrics (bool): Whether to enable TensorBoard metrics tracking.
+            experiment_name (str): Name for this training run.
         """
         lg.logger_main.info("Initializing Trainer...")
         self.model_manager = model_manager
         self.mcts_config = mcts_config
         self.self_play_config = self_play_config
         self.training_config = training_config
+        
+        # Initialize metrics tracking
+        if enable_metrics:
+            self.metrics = TrainingMetrics(experiment_name=experiment_name)
+            self.model_manager.metrics_tracker = self.metrics
+            lg.logger_main.info(f"TensorBoard logging enabled. Run 'tensorboard --logdir {self.metrics.log_dir.parent}' to view.")
+        else:
+            self.metrics = None
 
         # Initialize or load the replay buffer
         buffer_folder = self.self_play_config["replay_buffer_folder"]
@@ -71,6 +84,7 @@ class Trainer:
         start_time = time.time()
         new_examples = 0
         games_completed = 0
+        game_metrics_data = []
 
         # Currently workers are CPU only, so model is set to cpu
         data_generating_manager.model.cpu()
@@ -106,15 +120,22 @@ class Trainer:
                 # Wrap with tqdm for progress visualization
                 results_iterator = pool.imap_unordered(self_play_worker, args_list)
 
-                for game_data in tqdm(
+                for game_result in tqdm(
                     results_iterator, total=num_games, desc=" Self-Play Games"
                 ):
-                    if (
-                        game_data
-                    ):  # Check if worker returned valid data (not empty list)
-                        collected_data.extend(game_data)
-                        new_examples += len(game_data)
-                        games_completed += 1
+                    if game_result:
+                        if isinstance(game_result, tuple) and len(game_result) == 2:
+                            # New format with metrics
+                            game_data, game_info = game_result
+                            collected_data.extend(game_data)
+                            new_examples += len(game_data)
+                            games_completed += 1
+                            game_metrics_data.append(game_info)
+                        else:
+                            # Old format for backward compatibility
+                            collected_data.extend(game_result)
+                            new_examples += len(game_result)
+                            games_completed += 1
                     # else: Game failed in worker, already printed error there
 
             print("\n  Parallel pool finished.")
@@ -132,6 +153,17 @@ class Trainer:
         print(f"  Added {new_examples} examples.")
         print(f"  Buffer size: {len(self.replay_buffer)} / {self.replay_buffer.maxlen}")
         print(f"  Time taken: {end_time - start_time:.2f} seconds")
+        
+        # Log self-play metrics
+        if self.metrics and game_metrics_data:
+            self.metrics.log_self_play_metrics(game_metrics_data)
+            
+            # Log replay buffer stats
+            buffer_stats = {
+                'size': len(self.replay_buffer),
+                'capacity': self.replay_buffer.maxlen
+            }
+            self.metrics.log_replay_buffer_stats(buffer_stats)
 
     def execute_training_phase(self):
         """Trains the model using data from the replay buffer."""
@@ -191,6 +223,21 @@ class Trainer:
         else:
             print("  No batches were processed.")
         print(f"  Time taken: {end_time - start_time:.2f} seconds")
+        
+        # Log training epoch summary
+        if self.metrics and batches_processed > 0:
+            epoch_metrics = {
+                'avg_total_loss': avg_total_loss,
+                'avg_policy_loss': avg_policy_loss,
+                'avg_value_loss': avg_value_loss,
+                'batches_processed': batches_processed,
+                'training_time': end_time - start_time
+            }
+            self.metrics.log_epoch_summary(epoch_metrics)
+            
+            # Log model weights periodically
+            if self.metrics.iteration % 5 == 0:  # Every 5 iterations
+                self.metrics.log_model_weights(self.model_manager.model)
 
     def run_training_loop(self):
         print("============================================")
@@ -256,10 +303,18 @@ class Trainer:
             # ... (buffer saving, evaluation logic) ...
             if current_iteration_num % eval_frequency == 0 and current_iteration_num > 0:
                 self.evaluate_model() # This updates self.best_model_manager if candidate is better
+                
+            # Increment metrics iteration counter
+            if self.metrics:
+                self.metrics.increment_iteration()
 
         print("\n============================================")
         print("             TRAINING COMPLETE             ")
         print("============================================")
+        
+        # Close metrics tracking
+        if self.metrics:
+            self.metrics.close()
 
     def _initialize_best_model(self):
         """Initializes or loads the 'best' model for comparison."""
@@ -338,6 +393,10 @@ class Trainer:
         lg.logger_main.info(f"--- Evaluation Finished ---")
         lg.logger_main.info( f"  Results: Candidate={candidate_wins}, Best={best_wins}, Draws/Errors={draws}")
         lg.logger_main.info(f"  Candidate Win Rate (vs Best, excluding draws): {win_rate:.3f}")
+        
+        # Log evaluation results to TensorBoard
+        if self.metrics:
+            self.metrics.log_evaluation_results(win_rate, num_eval_games)
         # Check if the candidate model is significantly better
         if win_rate > win_threshold: # (candidate_wins / total_non_draws)
                 print(f"  Candidate model passed threshold ({win_threshold:.2f})!")
@@ -378,7 +437,7 @@ class Trainer:
             int: Outcome from the perspective of the CANDIDATE model
                  (1 if candidate wins, -1 if best wins, 0 for draw).
         """
-        game = HarmoniesGameState()
+        game = GameState()
         players = (
             {0: candidate_manager, 1: best_manager}
             if first_player == 0
@@ -461,7 +520,7 @@ def self_play_worker(args):
         return []  # Return empty on failure
 
     # --- 2. Simulate one game ---
-    game = HarmoniesGameState()
+    game = GameState()
     game_history = []
     game_move_count = 0 # Initialize game move counter
 
@@ -495,6 +554,7 @@ def self_play_worker(args):
                 "state_rep": state_representation,
                 "player": current_player_idx,
                 "pi": pi_target,
+                "action": best_action,
             }
         )
 
@@ -537,5 +597,12 @@ def self_play_worker(args):
             )
         )
 
+    # Collect game metrics
+    game_info = {
+        'length': len(game_history),
+        'outcome': final_outcome,
+        'moves': [entry.get('action') for entry in game_history if 'action' in entry]
+    }
+    
     # print(f"Worker {os.getpid()} finished game with {len(training_data)} examples.") # Debug print
-    return training_data
+    return training_data, game_info
