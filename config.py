@@ -70,6 +70,7 @@ mcts_config_default: MCTSConfigType = {
     # Before this turn, visits^(1/tau) is used, tau=1 usually.
     "action_size": model_config_default["action_size"],
     "testing": False,
+    "debug": False
 }
 
 mcts_config_eval: MCTSConfigType = {
@@ -83,6 +84,7 @@ mcts_config_eval: MCTSConfigType = {
     "turns_until_tau0": 0,  # Turn after which move selection becomes deterministic FOR EVAL
     "action_size": model_config_default["action_size"],
     "testing": True, # Ensure eval is deterministic
+    "debug": False
 }
 
 self_play_config_default: SelfPlayConfigType = {
@@ -108,7 +110,7 @@ self_play_config_default: SelfPlayConfigType = {
 
 
 ### TESTING CONFIGS
-test_model_config: ModelConfigType = {
+debug_model_config: ModelConfigType = {
     "input_channels": INPUT_CHANNELS,
     "cnn_filters": 32,  # Smaller filter size for faster NN pass (optional)
     "board_size": BOARD_SIZE,
@@ -121,14 +123,14 @@ test_model_config: ModelConfigType = {
 }
 
 # --- Training Config (Minimal training) ---
-test_training_config: TrainingConfigType = {
+debug_training_config: TrainingConfigType = {
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "optimizer_type": "Adam",
     "learning_rate": 0.001,  # LR doesn't hugely impact test speed, keep standard
     "weight_decay": 0.0,  # Disable regularization for speed/simplicity in test
     "value_loss_weight": 1.0,  # Keep standard weights
     "policy_loss_weight": 1.0,
-    "batch_size": 4,  # <<< VERY SMALL batch size
+    "batch_size": 4,  
     "momentum": 0.9,
     "use_scheduler": True,              
     "scheduler_type": "StepLR",         
@@ -139,8 +141,8 @@ test_training_config: TrainingConfigType = {
 }
 
 # --- MCTS Config (Minimal search) ---
-test_mcts_config: MCTSConfigType = {
-    "num_simulations": 4,  # <<< ABSOLUTE MINIMUM simulations
+debug_mcts_config: MCTSConfigType = {
+    "num_simulations": 4, 
     "cpuct": 1.0,  # Keep standard exploration factor
     "dirichlet_alpha": 0.3,  # Noise params don't affect speed much
     "dirichlet_epsilon": 0.0,  # <<< DISABLE root noise for simplicity in test run
@@ -148,9 +150,10 @@ test_mcts_config: MCTSConfigType = {
     "turns_until_tau0": 0,  # <<< Makes move selection greedy immediately (tau=0)
     "action_size": ACTION_SIZE,
     "testing": True, # Ensure test MCTS is deterministic for self-play like tests
+    "debug": True
 }
 
-test_mcts_config_eval: MCTSConfigType = {
+debug_mcts_config_eval: MCTSConfigType = {
     "num_simulations": 4,  # <<< ABSOLUTE MINIMUM simulations
     "cpuct": 1.0,  # Keep standard exploration factor
     "dirichlet_alpha": 0.1,
@@ -160,10 +163,11 @@ test_mcts_config_eval: MCTSConfigType = {
     # Add eval_mode flag if get_best_action_and_pi supports it
     "action_size": ACTION_SIZE,
     "testing": True, # Ensure test eval is deterministic
+    "debug": True
 }
 
 # --- Self-Play Config (Minimal execution) ---
-test_self_play_config: SelfPlayConfigType = {
+debug_self_play_config: SelfPlayConfigType = {
     "num_iterations": 1,  # <<< ONLY ONE iteration
     "num_games_per_iter": 2,  # <<< VERY FEW games
     "epochs_per_iter": 1,  # <<< Minimum training epochs
@@ -180,7 +184,7 @@ test_self_play_config: SelfPlayConfigType = {
     "num_parallel_games": 1,  # <<< Low number, adjust based on your cores (e.g., max(1, cpu_count() // 2))
     "worker_device": "cpu",
     # --- Info needed by helper functions ---
-    "action_size": test_model_config["action_size"],  # Reference from model config
+    "action_size": debug_model_config["action_size"],  # Reference from model config
     "num_hexes": NUM_HEXES,  # Make sure this matches constants.py
     "coordinate_to_index_map": coordinate_to_index_map,  # Make sure this matches constants.py
 }

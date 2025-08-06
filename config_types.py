@@ -42,6 +42,7 @@ class MCTSConfigType(TypedDict):
     turns_until_tau0: int
     action_size: int
     testing: bool
+    debug: bool
 
 
 # For self_play_config

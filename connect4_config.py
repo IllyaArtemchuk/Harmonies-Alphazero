@@ -28,11 +28,26 @@ connect4_mcts_config = mcts_config_default.copy()
 connect4_mcts_config.update({
     "num_simulations": 200,  # Reduced from default - Connect 4 has smaller game tree
     "cpuct": 1.0,  # May need tuning
+    "testing": False,  # IMPORTANT: Use False for proper evaluation with adequate simulations
 })
+
+# Create Connect 4 specific evaluation config with more simulations for stronger play
+connect4_mcts_eval_config = {
+    "num_simulations": 400,  # More simulations for stronger evaluation games
+    "cpuct": 1.5,  # Slightly more exploration for evaluation
+    "dirichlet_alpha": 0.1,
+    "dirichlet_epsilon": 0.0,  # No noise for deterministic evaluation
+    "fpu_value": 0.25,
+    "turns_until_tau0": 0,  # Greedy move selection from start
+    "action_size": connect4_model_config["action_size"],
+    "testing": False,  # Use proper evaluation, not minimal testing config
+}
 
 connect4_self_play_config = self_play_config_default.copy()
 connect4_self_play_config.update({
-    "games_per_iteration": 100,  # More games since they're faster
+    "num_games_per_iter": 100,  # More games since they're faster
     "checkpoint_folder": "./checkpoints_connect4/",
     "replay_buffer_folder": "./buffer_connect4/",
+    "eval_episodes": 20,  # Reasonable number for Connect 4
+    "eval_win_rate_threshold": 0.55,  # Slightly higher threshold for Connect 4
 })
